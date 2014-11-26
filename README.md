@@ -2,7 +2,7 @@
 
 [mcia-irods-utils](https://github.com/mesocentre-mcia/mcia-irods-utils) is a set of commandline utilities for [iRODS](http://www.irods.org) iCommands.
 
-# Prerquisites
+# Prerequisites
 
 To use mcia-irods-utils, you need:
 * Bash shell
