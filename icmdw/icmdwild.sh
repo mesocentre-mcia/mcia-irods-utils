@@ -142,10 +142,14 @@ function _icmdw_irmw() {
     _icmdw irm "$@"
 }
 
+function _icmdw_iechow() {
+    _icmdw echo "$@"
+}
+
 cmd=$(basename "$0")
 
 case "$cmd" in
-    igetw|ilsw|irmw)
+    igetw|ilsw|irmw|iechow)
         _icmdw_"$cmd" "$@"
         ;;
     *)
