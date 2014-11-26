@@ -1,0 +1,196 @@
+#! /usr/bin/env python
+
+import os
+import os.path
+import re
+import subprocess
+
+class IrodsCommand:
+    "An iRODS iCommand wrapper"
+    def __init__(self, cmd, opts = [], output_filter = lambda e: e, verbose = False):
+        self.cmd = cmd
+        self.opts = opts
+        self.verbose = verbose
+        self.output_filter = output_filter
+
+    def __call__(self, cmdline = []):
+        cmdlist = [self.cmd] + self.opts + cmdline
+
+        if self.verbose:
+            print "IrodsCommand:", cmdlist
+
+        p = subprocess.Popen( cmdlist, stdout = subprocess.PIPE, stderr = subprocess.STDOUT )
+        output = p.communicate()[0]
+
+        return p.returncode, self.output_filter(output)
+
+def parse_env(path):
+    "parse iRODS iCommands environment files"
+
+    envre = re.compile("^\s*(?P<name>\w+)\s*[=\s]\s*['\"]?(?P<value>[^'\"]*[^'\"\s])['\"]?\s*")
+
+    ret = {}
+
+    #print "opening", path
+    with open(path, 'r') as f:
+        for l in f.readlines():
+            #print "parsing", l
+            m = envre.match(l)
+            if m:
+                ret[m.group("name")] = m.group("value")
+    return ret
+
+def guess_icwd():
+    "guess iCommand working directory"
+    pid = os.getpid()
+    ppid = os.getppid()
+
+    repo = os.path.expanduser(os.path.join("~", ".irods"))
+
+    icwd = None
+    try:
+        icwd = parse_env(os.path.join(repo, ".irodsEnv.%d" % pid))["irodsCwd"]
+    except:
+        try:
+            icwd = parse_env(os.path.join(repo, ".irodsEnv.%d" % ppid))["irodsCwd"]
+        except:
+            pass
+
+    if not icwd:
+        ipwd = IrodsCommand("ipwd")
+        retcode, icwd = ipwd()
+
+    return icwd
+
+def guess_user():
+    "guess iCommands iRODS user name" 
+    envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
+
+    env = parse_env(envfile)
+
+    try:
+        user = env["irodsUserName"]
+    except:
+        user = os.getlogin()
+    return user
+
+def isrel(path):
+    "check if path is relative"
+    return not path.startswith('/')
+
+def iquest_replicas(path, user = None, recursive = False):
+    "gather replica status dictionary"
+
+    def iquest_filter(e):
+        if "CAT_NO_ROWS_FOUND" in e: return {}
+        ret = {}
+
+        for l in e.split():
+            path, replnum = l.split(':')
+            if path not in ret: ret[path] = 0
+            ret[path] += int(replnum)
+
+        return ret
+
+    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
+                          output_filter = iquest_filter, verbose = False)
+
+    condition1_list = ["COLL_NAME = '%s'" % path]
+    condition2_list = ["COLL_NAME like '%s/%%'" % path]
+
+    if user:
+        user_condition = "DATA_OWNER_NAME = '%s'" % user
+        condition1_list.append(user_condition)
+        condition2_list.append(user_condition)
+
+    condition1 = " and ".join(condition1_list)
+    condition2 = " and ".join(condition2_list)
+
+    select = "select COLL_NAME, DATA_NAME, count(DATA_REPL_NUM)"
+
+    select1 = select + " where " + condition1
+    select2 = select + " where " + condition2
+
+    ret = {}
+
+    retcode, ret1 = iquest([select1])
+
+    if retcode == 0:
+        ret.update(ret1)
+
+        if recursive:
+            retcode, ret2 = iquest([select2])
+
+            if retcode == 0:
+                ret.update(ret2)
+
+    return ret
+
+def replicas_failed_filter(replicas, filterlist):
+    "filter replica statuses that fail conditions"
+
+    def aggregate_failed_filterlist(e):
+        for f in filterlist:
+            if not f(e[1]): return True
+
+        return False
+
+    failed = filter(aggregate_failed_filterlist, replicas.items())
+
+    return failed
+
+if __name__ == "__main__":
+    from optparse import OptionParser
+
+    usage="""\
+usage: %prog [options] <exact-replnum> | <minimum-replnum>+ | <maximum-replnum>- ...
+
+checks wether files respect replica number conditions and prints files which fail the test.
+
+There are 3 types of conditions
+<exact-replnum> exact number of replicas 
+<minimum-replnum>+ minimum number of replicas
+<maximum-replnum>- maximum number of replicas
+
+Examples:
+
+# check files with 3 replicas or more
+$ %prog 3+
+
+# check files with exactly 2 replicas
+$ %prog 2
+"""
+
+    parser = OptionParser(usage = usage)
+    parser.add_option("-c", "--collection", dest="collection", default='.',
+                      help="check files in COLL (default: .)", metavar="COLL")
+    parser.add_option("-r", "--recursive",
+                      action="store_true", dest="recursive", default=False,
+                      help="Check files in subcollections")
+
+    (options, args) = parser.parse_args()
+
+    conditions = []
+
+    for arg in args:
+        if arg.endswith('+'):
+            replnum = int (arg[:-1])
+            conditions.append(lambda e: e >= replnum)
+        elif arg.endswith('-'):
+            replnum = int (arg[:-1])
+            conditions.append(lambda e: e <= replnum)
+        else:
+            replnum = int (arg)
+            conditions.append(lambda e: e == replnum)
+
+    collection = options.collection
+
+    if isrel(collection):
+        icwd = guess_icwd()
+        collection = os.path.normpath(icwd + '/' + collection)
+
+    replicas = iquest_replicas(collection, user = guess_user(), recursive = options.recursive)
+
+    failed = replicas_failed_filter(replicas, conditions)
+    print failed
+
