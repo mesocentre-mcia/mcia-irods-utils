@@ -17,7 +17,7 @@ class IrodsCommand:
         cmdlist = [self.cmd] + self.opts + cmdline
 
         if self.verbose:
-            print "IrodsCommand:", cmdlist
+            print "IrodsCommand:", " ".join([self.cmd] + self.opts + map(repr, cmdline))
 
         p = subprocess.Popen( cmdlist, stdout = subprocess.PIPE, stderr = subprocess.STDOUT )
         output = p.communicate()[0]
@@ -78,7 +78,7 @@ def isrel(path):
     "check if path is relative"
     return not path.startswith('/')
 
-def iquest_replicas(path, user = None, recursive = False):
+def iquest_replicas(path, user = None, recursive = False, resource_group = None):
     "gather replica status dictionary"
 
     def iquest_filter(e):
@@ -93,7 +93,7 @@ def iquest_replicas(path, user = None, recursive = False):
         return ret
 
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
-                          output_filter = iquest_filter, verbose = False)
+                          output_filter = iquest_filter, verbose = True)
 
     condition1_list = ["COLL_NAME = '%s'" % path]
     condition2_list = ["COLL_NAME like '%s/%%'" % path]
@@ -102,6 +102,11 @@ def iquest_replicas(path, user = None, recursive = False):
         user_condition = "DATA_OWNER_NAME = '%s'" % user
         condition1_list.append(user_condition)
         condition2_list.append(user_condition)
+
+    if resource_group:
+        rg_condition = "RESC_GROUP_NAME = '%s'" % resource_group
+        condition1_list.append(rg_condition)
+        condition2_list.append(rg_condition)
 
     condition1 = " and ".join(condition1_list)
     condition2 = " and ".join(condition2_list)
@@ -167,6 +172,9 @@ $ %prog 2
     parser.add_option("-r", "--recursive",
                       action="store_true", dest="recursive", default=False,
                       help="Check files in subcollections")
+    parser.add_option("-G", "--resource-group", dest="resource_group", default=None,
+                      metavar="RESOURCE_GROUP",
+                      help="Check replica numbers only for replicas in RESOURCE_GROUP")
 
     (options, args) = parser.parse_args()
 
@@ -189,7 +197,19 @@ $ %prog 2
         icwd = guess_icwd()
         collection = os.path.normpath(icwd + '/' + collection)
 
-    replicas = iquest_replicas(collection, user = guess_user(), recursive = options.recursive)
+    replicas = iquest_replicas(collection, user = guess_user(),
+                               recursive = options.recursive)
+
+    if options.resource_group:
+        group_replicas = iquest_replicas(collection, user = guess_user(),
+                                         recursive = options.recursive,
+                                         resource_group = options.resource_group)
+
+        # zero all files replica numbers
+        for k in replicas: replicas[k] = 0
+
+        # replace replica numbers by resource group replica numbers
+        for k, v in group_replicas.iteritems(): replicas[k] = v
 
     failed = replicas_failed_filter(replicas, conditions)
     print failed
