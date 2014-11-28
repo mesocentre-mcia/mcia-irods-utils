@@ -1,6 +1,7 @@
 # -*- python -*-
 
 import os
+import string
 import re
 import subprocess
 
@@ -56,7 +57,7 @@ def guess_icwd():
             pass
 
     if not icwd:
-        ipwd = IrodsCommand("ipwd")
+        ipwd = IrodsCommand("ipwd", output_filter = string.strip)
         retcode, icwd = ipwd()
 
     return icwd
