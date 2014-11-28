@@ -1,0 +1,94 @@
+# -*- python -*-
+
+import re
+import os.path
+
+from icommand import IrodsCommand
+
+def iquest_replicas(path, user = None, recursive = False, resource_group = None):
+    "gather replica status dictionary"
+
+    def iquest_filter(e):
+        if "CAT_NO_ROWS_FOUND" in e: return {}
+        ret = {}
+
+        for l in e.split():
+            path, replnum = l.split(':')
+            if path not in ret: ret[path] = 0
+            ret[path] += int(replnum)
+
+        return ret
+
+    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
+                          output_filter = iquest_filter, verbose = False)
+
+    condition1_list = ["COLL_NAME = '%s'" % path]
+    condition2_list = ["COLL_NAME like '%s/%%'" % path]
+
+    if user:
+        user_condition = "DATA_OWNER_NAME = '%s'" % user
+        condition1_list.append(user_condition)
+        condition2_list.append(user_condition)
+
+    if resource_group:
+        rg_condition = "RESC_GROUP_NAME = '%s'" % resource_group
+        condition1_list.append(rg_condition)
+        condition2_list.append(rg_condition)
+
+    condition1 = " and ".join(condition1_list)
+    condition2 = " and ".join(condition2_list)
+
+    select = "select COLL_NAME, DATA_NAME, count(DATA_REPL_NUM)"
+
+    select1 = select + " where " + condition1
+    select2 = select + " where " + condition2
+
+    ret = {}
+
+    retcode, ret1 = iquest([select1])
+
+    if retcode == 0:
+        ret.update(ret1)
+
+        if recursive:
+            retcode, ret2 = iquest([select2])
+
+            if retcode == 0:
+                ret.update(ret2)
+
+    return ret
+
+def file_replicas(path):
+    "return ordered list of replicas represented by RG and replica number"
+
+    def iquest_filter(e):
+        if "CAT_NO_ROWS_FOUND" in e: return []
+        values = e.strip().split('\n')
+        return map(lambda e: e.split(":"), values)
+
+    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
+                          output_filter = iquest_filter, verbose = False)
+
+    retcode, replicas = iquest(["select RESC_GROUP_NAME, order_asc(DATA_REPL_NUM) where COLL_NAME = '%s' and DATA_NAME = '%s'" % os.path.split(path)])
+
+    # FIXME: check return code
+
+    return replicas
+
+def mciaRGList():
+    "return list of available Resource Groups"
+
+    listre = re.compile("^\s*\[(?P<content>.*)\]\s*$")
+    def list_parse(e):
+        m = listre.match(e)
+        if not m: raise TypeError
+        return m.group("content").split(",")
+        
+    irule = IrodsCommand("irule", ["mciaRGListWrite", "null", "ruleExecOut"],
+                         output_filter = list_parse, verbose = False)
+
+    retcode, ret = irule()
+
+    if retcode != 0: raise OSError
+
+    return ret
