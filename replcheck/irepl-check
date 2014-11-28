@@ -22,7 +22,7 @@ def repair_replicas_number(path, min_ = None, max_ = None, rg_list = None, verbo
     rg_list = rg_list or mciaRGList()
 
     file_repls = file_replicas(path)
-    file_rgs = map(lambda e: e[0], file_repls)
+    file_rgs = [e[0] for e in file_repls]
 
     nrepl = len(file_rgs)
 
@@ -116,7 +116,7 @@ $ %prog 2
             condition = lambda e: e <= replnum
             max_ = replnum
         elif ':' in arg:
-            m, M = map(int, arg.split(':'))
+            m, M = [int(e) for e in arg.split(':')]
             condition = lambda e: e>=m and e<=M
             min_ = m
             max_ = M

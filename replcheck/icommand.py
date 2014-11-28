@@ -17,7 +17,7 @@ class IrodsCommand:
         cmdlist = [self.cmd] + self.opts + cmdline
 
         if self.verbose:
-            print "IrodsCommand:", " ".join([self.cmd] + self.opts + map(repr, cmdline))
+            print "IrodsCommand:", " ".join([self.cmd] + self.opts + [repr(e) for e in cmdline])
 
         p = subprocess.Popen( cmdlist, stdout = subprocess.PIPE, stderr = subprocess.STDOUT )
         output = p.communicate()[0]

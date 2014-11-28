@@ -64,7 +64,7 @@ def file_replicas(path):
     def iquest_filter(e):
         if "CAT_NO_ROWS_FOUND" in e: return []
         values = e.strip().split('\n')
-        return map(lambda e: e.split(":"), values)
+        return [e.split(":") for e in values]
 
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
                           output_filter = iquest_filter, verbose = False)
