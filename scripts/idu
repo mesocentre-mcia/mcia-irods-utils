@@ -1,8 +1,9 @@
 #! /usr/bin/env python
 
+import sys
 import math
 
-from mcia_irods_utils import IrodsCommand, guess_icwd, guess_user, isrel, ipathw
+from mcia_irods_utils import IrodsCommand, guess_icwd, guess_user, isrel, ipathw, expanduser
 
 def iquest_du_base(path):
     "gather collection disk usage stats"
@@ -50,7 +51,7 @@ def base_include_subcollections(base):
 
             base[parent] += base[subcollection]
 
-def base_print(base):
+def base_print(base, maxslashes = sys.maxint):
     colls = base.keys()
     colls.sort(reverse = True)
 
@@ -59,7 +60,8 @@ def base_print(base):
     fmt = "{:<"+str(maxsize)+"} {}"
 
     for coll in colls:
-        print fmt.format(base[coll], coll)
+        if coll.count('/') <= maxslashes:
+            print fmt.format(base[coll], coll)
 
 _units = {
     0 : 'B',
@@ -145,9 +147,6 @@ summary disk usage for each COLLECTION, recursively.
     parser.add_option("-S", "--separate-dirs",
                       action="store_false", dest="recursive", default=True,
                       help="do not include size of subdirectories")
-    parser.add_option("-s", "--summarize",
-                      action="store_true", dest="summarize", default=False,
-                      help="display only a total for each argument")
     parser.add_option("-b", "--bytes", const=B,
                       action="store_const", dest="converter", default=nounit,
                       help="print sizes in bytes")
@@ -171,6 +170,12 @@ summary disk usage for each COLLECTION, recursively.
     parser.add_option("--si", const=si,
                       action="store_const", dest="converter",
                       help="like -H, but use powers of 1000 not 1024")
+    parser.add_option("-d", "--max-depth", metavar="DEPTH", default = -1,
+                      action="store", dest="maxdepth", type = 'int',
+                      help="print the total for a directory (or file, with --all) only if it is DEPTH or fewer levels below the command line argument;  --max-depth=0 is the same as --summarize")
+    parser.add_option("-s", "--summarize", const = 0,
+                      action="store_const", dest="maxdepth",
+                      help="display only a total for each argument")
 
     (options, args) = parser.parse_args()
 
@@ -182,6 +187,8 @@ summary disk usage for each COLLECTION, recursively.
         collections += ipathw(arg, icwd)
 
     for collection in collections:
+        collection = expanduser(collection)
+
         if isrel(collection):
             collection = os.path.normpath(icwd + '/' + collection)
 
@@ -194,19 +201,8 @@ summary disk usage for each COLLECTION, recursively.
 
         base_convert(base, options.converter)
 
-        if options.summarize:
-            print "%s %s" % (base[collection], collection)
-        else:
-            base_print(base)
+        maxdepth = sys.maxint
+        if options.maxdepth >= 0:
+            maxdepth = collection.count('/') + options.maxdepth
 
-
-options="""
-
-       -d, --max-depth=N
-              print the total for a directory (or file, with --all) only if it is N or fewer levels below the command line argument;  --max-depth=0 is the same as --summarize
-
-"""
-more_options="""
--d, --dereplicate
-         count only one replica by dataobject
-"""
+        base_print(base, maxdepth)

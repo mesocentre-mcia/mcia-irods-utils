@@ -62,7 +62,7 @@ def _iquestw(path, orig_path):
 def ipathw(path, icwd = None):
     newpath = path
 
-    if not iswild(newpath): return [newpath]
+    if not iswild(newpath): return [os.path.normpath(newpath)]
 
     if isrel(newpath):
         if icwd is None: icwd = guess_icwd()

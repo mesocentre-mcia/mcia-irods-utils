@@ -64,17 +64,52 @@ def guess_icwd():
 
     return icwd
 
-def guess_user():
+def guess_user(env = None):
     "guess iCommands iRODS user name" 
-    envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
 
-    env = parse_env(envfile)
+    if env is None:
+        envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
+        env = parse_env(envfile)
 
     try:
         user = env["irodsUserName"]
     except:
         user = os.getlogin()
     return user
+
+def guess_zone(env = None):
+    "guess iCommands iRODS zone" 
+
+    if env is None:
+        envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
+        env = parse_env(envfile)
+
+    try:
+        zone = env["irodsZone"]
+    except:
+        zone = "tempZone"
+    return zone
+
+def guess_home(env = None):
+    "guess iCommands iRODS user home collection" 
+
+    if env is None:
+        envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
+        env = parse_env(envfile)
+
+    try:
+        home = env["irodsHome"]
+    except:
+        home = "/".join(["", guess_zone(env), "home", guess_user(env)])
+    return home
+
+def expanduser(path):
+    if not path.startswith("~"): return path
+
+    path = path[1:]
+    if path.startswith("/") or not path: return guess_home() + path
+
+    return "/".join([guess_home(), path])
 
 def isrel(path):
     "check if path is relative"
