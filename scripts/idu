@@ -1,0 +1,208 @@
+#! /usr/bin/env python
+
+import math
+
+from mcia_irods_utils import IrodsCommand, guess_icwd, guess_user, isrel
+
+def iquest_du_base(path):
+    "gather collection disk usage stats"
+
+    def iquest_filter(e):
+        if "CAT_NO_ROWS_FOUND" in e: return {}
+
+        colls = e.strip().split('\n')
+
+        ret = {}
+        for c in colls:
+            size, name = c.split(':', 1)
+            ret[name] = int(size)
+
+        return ret
+
+    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
+                          output_filter = iquest_filter, verbose = False)
+
+    select = "select sum(DATA_SIZE), COLL_NAME"
+    where_local = " where COLL_NAME = '%s'" % path
+    where_recursive = " where COLL_NAME like '%s/%%'" % path
+
+    retcode, local_base = iquest([' '.join ([select, where_local])])
+    retcode, recursive_base = iquest([' '.join ([select, where_recursive])])
+
+
+    local_base.update(recursive_base)
+
+    return local_base
+
+def base_include_subcollections(base):
+    colls = base.keys()
+    colls.sort()
+
+    for i, parent in enumerate(colls):
+        for subcollection in colls[i+1:]:
+            if parent not in subcollection: break
+
+            base[parent] += base[subcollection]
+
+def base_print(base):
+    colls = base.keys()
+    colls.sort(reverse = True)
+
+    maxsize = max([len(str(s)) for s in base.values()])
+
+    fmt = "{:<"+str(maxsize)+"} {}"
+
+    for coll in colls:
+        print fmt.format(base[coll], coll)
+
+_units = {
+    0 : 'B',
+    1 : 'K',
+    2 : 'M',
+    3 : 'G',
+    4 : 'T',
+# be far-sighted ;)
+    5 : 'P',
+    6 : 'E',
+}
+
+_si_units = {
+    0 : 'b',
+    1 : 'k',
+    2 : 'm',
+    3 : 'g',
+    4 : 't',
+# be far-sighted ;)
+    5 : 'p',
+    6 : 'e',
+}
+
+class UnitConverter:
+    def __init__(self, factor, symbol = ""):
+        self.factor = factor
+        self.symbol = symbol
+
+    def __call__(self, value):
+        value = value / (self.factor)
+        fmt = "{:1f}{}"
+        if "{:.1f}".format(value).endswith(".0"): fmt = "{:.0f}{}"
+        return fmt.format(value, self.symbol)
+
+class DictUnitConverter(UnitConverter):
+    def __init__(self, dict_, base):
+        self.dict = dict_
+        self.base = float(base)
+        self.maxkey = max(self.dict)
+
+    def __call__(self, value):
+        if value == 0:
+            return "%d" + self.dict[0]
+
+        logvalue = min(int(math.log(value)/math.log(self.base)), self.maxkey)
+
+        unit = self.dict[logvalue]
+        fmt = "{:.1f}{}"
+
+        value = value / (self.base ** logvalue)
+        if "{:.1f}".format(value).endswith(".0"): fmt = "{:.0f}{}"
+
+        return fmt.format(value, unit)
+
+nounit = UnitConverter(1)
+
+B = UnitConverter(1024**0, "B")
+K = UnitConverter(1024**1, "K")
+M = UnitConverter(1024**2, "M")
+G = UnitConverter(1024**3, "G")
+T = UnitConverter(1024**4, "T")
+
+h = DictUnitConverter(_units, 1024)
+si = DictUnitConverter(_si_units, 1000)
+
+def base_convert(base, converter):
+    for k, v in base.items():
+        base[k] = converter(v)
+
+if __name__ == "__main__":
+    import sys
+    import os.path
+
+    from optparse import OptionParser
+
+    usage="""\
+usage: %prog [options] [COLLECTION]...
+
+summary disk usage for each COLLECTION, recursively.
+"""
+
+    parser = OptionParser(usage = usage)
+    parser.add_option("-S", "--separate-dirs",
+                      action="store_false", dest="recursive", default=True,
+                      help="do not include size of subdirectories")
+    parser.add_option("-s", "--summarize",
+                      action="store_true", dest="summarize", default=False,
+                      help="display only a total for each argument")
+    parser.add_option("-b", "--bytes", const=B,
+                      action="store_const", dest="converter", default=nounit,
+                      help="print sizes in bytes")
+    parser.add_option("-k", const=K,
+                      action="store_const", dest="converter",
+                      help="print sizes in kilobytes")
+    parser.add_option("-m", const=M,
+                      action="store_const", dest="converter",
+                      help="print sizes in megabytes")
+    parser.add_option("-g", const=G,
+                      action="store_const", dest="converter",
+                      help="print sizes in gigabytes")
+    parser.add_option("-t", const=T,
+                      action="store_const", dest="converter",
+                      help="print sizes in terabytes")
+
+    parser.add_option("-H", "--human-readable", const=h,
+                      action="store_const", dest="converter",
+                      help="print sizes in human readable format (e.g., 1K 234M 2G)")
+
+    parser.add_option("--si", const=si,
+                      action="store_const", dest="converter",
+                      help="like -H, but use powers of 1000 not 1024")
+
+    (options, args) = parser.parse_args()
+
+    if not args: args = ['.']
+
+    for collection in args:
+        if isrel(collection):
+            icwd = guess_icwd()
+            collection = os.path.normpath(icwd + '/' + collection)
+
+        base = iquest_du_base(collection)
+
+        if options.recursive:
+            base_include_subcollections(base)
+
+        base_convert(base, options.converter)
+
+        if options.summarize:
+            print "%s %s" % (base[collection], collection)
+        else:
+            base_print(base)
+
+
+options="""
+       -b, --bytes
+              equivalent to '--apparent-size --block-size=1'
+       -h, --human-readable
+              print sizes in human readable format (e.g., 1K 234M 2G)
+
+       --si   like -h, but use powers of 1000 not 1024
+
+       -k     like --block-size=1K
+
+       -d, --max-depth=N
+              print the total for a directory (or file, with --all) only if it is N or fewer levels below the command line argument;  --max-depth=0 is the same as --summarize
+
+"""
+more_options="""
+-u, --user 
+         only use one replica by dataobject
+"""
