@@ -2,7 +2,7 @@
 
 import math
 
-from mcia_irods_utils import IrodsCommand, guess_icwd, guess_user, isrel
+from mcia_irods_utils import IrodsCommand, guess_icwd, guess_user, isrel, ipathw
 
 def iquest_du_base(path):
     "gather collection disk usage stats"
@@ -19,18 +19,24 @@ def iquest_du_base(path):
 
         return ret
 
-    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
+    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct"],
                           output_filter = iquest_filter, verbose = False)
 
     select = "select sum(DATA_SIZE), COLL_NAME"
-    where_local = " where COLL_NAME = '%s'" % path
-    where_recursive = " where COLL_NAME like '%s/%%'" % path
+    where_local = "where COLL_NAME = '%s'" % path
+    where_recursive = "where COLL_NAME like '%s/%%'" % path
 
-    retcode, local_base = iquest([' '.join ([select, where_local])])
-    retcode, recursive_base = iquest([' '.join ([select, where_recursive])])
+    retcode, local_base = iquest(["%s:%s", ' '.join ([select, where_local])])
 
-
-    local_base.update(recursive_base)
+    if local_base:
+        select = "select sum(DATA_SIZE), COLL_NAME"
+        retcode, recursive_base = iquest(["%s:%s", ' '.join ([select, where_recursive])])
+        local_base.update(recursive_base)
+    else:
+        # path may be a file
+        select = "select sum(DATA_SIZE), COLL_NAME, DATA_NAME"
+        where_file = "where COLL_NAME = '%s' and DATA_NAME = '%s'" % os.path.split(path)
+        retcode, local_base = iquest(["%s:%s/%s", ' '.join ([select, where_file])])
 
     return local_base
 
@@ -169,16 +175,22 @@ summary disk usage for each COLLECTION, recursively.
     (options, args) = parser.parse_args()
 
     if not args: args = ['.']
+    icwd = guess_icwd()
 
-    for collection in args:
+    collections = []
+    for arg in args:
+        collections += ipathw(arg, icwd)
+
+    for collection in collections:
         if isrel(collection):
-            icwd = guess_icwd()
             collection = os.path.normpath(icwd + '/' + collection)
 
         base = iquest_du_base(collection)
 
         if options.recursive:
             base_include_subcollections(base)
+
+        if not base: continue
 
         base_convert(base, options.converter)
 
@@ -189,20 +201,12 @@ summary disk usage for each COLLECTION, recursively.
 
 
 options="""
-       -b, --bytes
-              equivalent to '--apparent-size --block-size=1'
-       -h, --human-readable
-              print sizes in human readable format (e.g., 1K 234M 2G)
-
-       --si   like -h, but use powers of 1000 not 1024
-
-       -k     like --block-size=1K
 
        -d, --max-depth=N
               print the total for a directory (or file, with --all) only if it is N or fewer levels below the command line argument;  --max-depth=0 is the same as --summarize
 
 """
 more_options="""
--u, --user 
-         only use one replica by dataobject
+-d, --dereplicate
+         count only one replica by dataobject
 """
