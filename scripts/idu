@@ -187,7 +187,6 @@ summary disk usage for each COLLECTION, recursively.
         collections += ipathw(arg, icwd)
 
     for collection in collections:
-        collection = expanduser(collection)
 
         if isrel(collection):
             collection = os.path.normpath(icwd + '/' + collection)

@@ -1,7 +1,7 @@
 
 import os.path
 
-from icommand import IrodsCommand, isrel, guess_icwd
+from icommand import IrodsCommand, isrel, guess_icwd, expanduser
 
 
 def iswild(path):
@@ -60,7 +60,7 @@ def _iquestw(path, orig_path):
     return (files + collections) or [orig_path]
 
 def ipathw(path, icwd = None):
-    newpath = path
+    newpath = expanduser(path)
 
     if not iswild(newpath): return [os.path.normpath(newpath)]
 
