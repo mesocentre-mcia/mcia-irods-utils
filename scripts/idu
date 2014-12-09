@@ -3,7 +3,7 @@
 import sys
 import math
 
-from mcia_irods_utils import IrodsCommand, guess_icwd, isrel, ipathw
+from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
 
 def iquest_du_base(path):
     "gather collection disk usage stats"
@@ -181,14 +181,13 @@ summary disk usage for each COLLECTION, recursively.
     if not args: args = ['.']
     icwd = guess_icwd()
 
-    collections = []
-    for arg in args:
-        collections += ipathw(arg, icwd)
+    collections = iargw( args, icwd )
 
     for collection in collections:
 
-        if isrel(collection):
-            collection = os.path.normpath(icwd + '/' + collection)
+        # iquest doesn't support relative paths
+        if isrel( collection ):
+            path = os.path.normpath( icwd + '/' + collection )
 
         base = iquest_du_base(collection)
 
