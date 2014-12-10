@@ -80,10 +80,6 @@ def iargw( args, icwd = None ):
     for arg in args:
         paths += ipathw( arg, icwd )
 
-    newpaths = []
-    for path in paths:
-        newpaths.append( path )
-
-    return newpaths
+    return paths
 
 __all__ = [iswild, ipathw, iargw]
