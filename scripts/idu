@@ -3,7 +3,7 @@
 import sys
 import math
 
-from mcia_irods_utils import IrodsCommand, guess_icwd, guess_user, isrel, ipathw, expanduser
+from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
 
 def iquest_du_base(path):
     "gather collection disk usage stats"
@@ -27,17 +27,17 @@ def iquest_du_base(path):
     where_local = "where COLL_NAME = '%s'" % path
     where_recursive = "where COLL_NAME like '%s/%%'" % path
 
-    retcode, local_base = iquest(["%s:%s", ' '.join ([select, where_local])])
+    _retcode, local_base = iquest( ["%s:%s", ' '.join ( [select, where_local] )] )
 
     if local_base:
         select = "select sum(DATA_SIZE), COLL_NAME"
-        retcode, recursive_base = iquest(["%s:%s", ' '.join ([select, where_recursive])])
+        _retcode, recursive_base = iquest( ["%s:%s", ' '.join ( [select, where_recursive] )] )
         local_base.update(recursive_base)
     else:
         # path may be a file
         select = "select sum(DATA_SIZE), COLL_NAME, DATA_NAME"
         where_file = "where COLL_NAME = '%s' and DATA_NAME = '%s'" % os.path.split(path)
-        retcode, local_base = iquest(["%s:%s/%s", ' '.join ([select, where_file])])
+        _retcode, local_base = iquest( ["%s:%s/%s", ' '.join ( [select, where_file] )] )
 
     return local_base
 
@@ -132,7 +132,6 @@ def base_convert(base, converter):
         base[k] = converter(v)
 
 if __name__ == "__main__":
-    import sys
     import os.path
 
     from optparse import OptionParser
@@ -182,15 +181,13 @@ summary disk usage for each COLLECTION, recursively.
     if not args: args = ['.']
     icwd = guess_icwd()
 
-    collections = []
-    for arg in args:
-        collections += ipathw(arg, icwd)
+    collections = iargw( args, icwd )
 
     for collection in collections:
-        collection = expanduser(collection)
 
-        if isrel(collection):
-            collection = os.path.normpath(icwd + '/' + collection)
+        # iquest doesn't support relative paths
+        if isrel( collection ):
+            path = os.path.normpath( icwd + '/' + collection )
 
         base = iquest_du_base(collection)
 

@@ -1,0 +1,14 @@
+#! /usr/bin/env python
+
+from mcia_irods_utils import guess_icwd, ipathw
+
+if __name__ == "__main__":
+    import sys
+
+    icwd = guess_icwd()
+
+    paths = []
+    for arg in sys.argv[1:]:
+        paths += ipathw(arg, icwd)
+
+    print " ".join( paths )

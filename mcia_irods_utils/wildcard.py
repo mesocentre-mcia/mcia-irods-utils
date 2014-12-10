@@ -1,7 +1,7 @@
 
 import os.path
 
-from icommand import IrodsCommand, isrel, guess_icwd
+from icommand import IrodsCommand, isrel, guess_icwd, expanduser
 
 
 def iswild(path):
@@ -45,22 +45,21 @@ def _iquestw(path, orig_path):
     coll, name = os.path.split(path)
 
     files = []
-    collections = []
 
     # look for data objects (files)
     if not path.endswith("/"): 
-        returncode, files = iquest(["%s/%s", "select COLL_NAME, DATA_NAME where COLL_NAME like '%s' AND DATA_NAME like '%s'" % (coll, name)])
+        _returncode, files = iquest( ["%s/%s", "select COLL_NAME, DATA_NAME where COLL_NAME like '%s' AND DATA_NAME like '%s'" % ( coll, name )] )
 
     # look for collections (directories)
     if  path.endswith("/"):
         path = path[:-1]
         path_slashes -= 1
-    returncode, collections = iquest(["%s", "select COLL_NAME where COLL_NAME like '%s' " % (path, )])
+    _returncode, collections = iquest( ["%s", "select COLL_NAME where COLL_NAME like '%s' " % ( path, )] )
 
     return (files + collections) or [orig_path]
 
 def ipathw(path, icwd = None):
-    newpath = path
+    newpath = expanduser(path)
 
     if not iswild(newpath): return [os.path.normpath(newpath)]
 
@@ -74,4 +73,13 @@ def ipathw(path, icwd = None):
 
     return newpath
 
-__all__ = [iswild, ipathw]
+def iargw( args, icwd = None ):
+    icwd = icwd or guess_icwd()
+
+    paths = []
+    for arg in args:
+        paths += ipathw( arg, icwd )
+
+    return paths
+
+__all__ = [iswild, ipathw, iargw]

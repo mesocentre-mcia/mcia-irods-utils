@@ -1,0 +1,31 @@
+#! /usr/bin/env python
+
+import os.path
+from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
+
+iget = IrodsCommand( "iget" )
+
+if __name__ == "__main__":
+    import sys
+
+    icwd = guess_icwd()
+
+    args = iargw( sys.argv[1:], icwd )
+
+    # because we spawn iget in a subprocess, we need to expand relative paths here,
+    # otherwise, ils wouldn't recognize wd correctly
+    newargs = []
+    for arg in args[:-1]:
+        if isrel( arg ) and not arg.startswith( '-' ):
+            arg = os.path.normpath( icwd + '/' + arg )
+        newargs.append( arg )
+
+    # note: last argument is not expanded:
+    # if there is only one argument, it shouldn't be a wildcard
+    # if there are several arguments, the last corresponds to a local path
+
+    retcode, output = iget( newargs + args[-1:] )
+
+    print output.rstrip()
+
+    sys.exit( retcode )
