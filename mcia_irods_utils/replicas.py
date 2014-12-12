@@ -5,8 +5,12 @@ import os.path
 
 from icommand import IrodsCommand
 
-def iquest_replicas(path, user = None, recursive = False, resource_group = None):
+def iquest_replicas( path, user = None, recursive = False, resource = None, resource_group_replicas = True ):
     "gather replica status dictionary"
+
+    resc_column = "RESC_GROUP_NAME"
+    if not resource_group_replicas:
+        resc_column = "RESC_NAME"
 
     def iquest_filter(e):
         if "CAT_NO_ROWS_FOUND" in e: return {}
@@ -20,7 +24,7 @@ def iquest_replicas(path, user = None, recursive = False, resource_group = None)
         return ret
 
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
-                          output_filter = iquest_filter, verbose = False)
+                          output_filter = iquest_filter, verbose = True )
 
     condition1_list = ["COLL_NAME = '%s'" % path]
     condition2_list = ["COLL_NAME like '%s/%%'" % path]
@@ -30,8 +34,8 @@ def iquest_replicas(path, user = None, recursive = False, resource_group = None)
         condition1_list.append(user_condition)
         condition2_list.append(user_condition)
 
-    if resource_group:
-        rg_condition = "RESC_GROUP_NAME = '%s'" % resource_group
+    if resource:
+        rg_condition = resc_column + " = '%s'" % resource
         condition1_list.append(rg_condition)
         condition2_list.append(rg_condition)
 
@@ -58,10 +62,14 @@ def iquest_replicas(path, user = None, recursive = False, resource_group = None)
 
     return ret
 
-def file_replicas(path):
+def file_replicas( path, resource_group_replicas = True ):
     "return ordered list of replicas represented by RG and replica number"
 
-    def iquest_filter(e):
+    resc_column = "RESC_GROUP_NAME"
+    if not resource_group_replicas:
+        resc_column = "RESC_NAME"
+
+    def iquest_filter( e ):
         if "CAT_NO_ROWS_FOUND" in e: return []
         values = e.strip().split('\n')
         return [e.split(":") for e in values]
@@ -69,7 +77,7 @@ def file_replicas(path):
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
                           output_filter = iquest_filter, verbose = False)
 
-    retcode, replicas = iquest(["select RESC_GROUP_NAME, order_asc(DATA_REPL_NUM) where COLL_NAME = '%s' and DATA_NAME = '%s'" % os.path.split(path)])
+    retcode, replicas = iquest( ["select %s, order_asc(DATA_REPL_NUM) where COLL_NAME = '%s' and DATA_NAME = '%s'" % ( ( resc_column, ) + os.path.split( path ) )] )
 
     # FIXME: check return code
 

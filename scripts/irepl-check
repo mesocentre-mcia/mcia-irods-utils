@@ -15,36 +15,47 @@ def replicas_failed_filter(replicas, filter_):
 
 _irepl = IrodsCommand("irepl")
 _irm = IrodsCommand("irm", ["-f"])
+def _dry_run_irepl( cmdlist ):
+    print "DRY RUN: irepl " + " ".join( cmdlist )
+    return 0, None
+def _dry_run_irm( cmdlist ):
+    print "DRY RUN: irm -f " + " ".join( cmdlist )
+    return 0, None
 
-def repair_replicas_number(path, min_ = None, max_ = None, rg_list = None, verbose = False):
+def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False ):
     "issues actions to fix replica numbers according to min_/max_ target"
 
-    rg_list = rg_list or mciaRGList()
+    irepl = _irepl
+    irm = _irm
 
-    file_repls = file_replicas(path)
+    if dry_run:
+        irepl = _dry_run_irepl
+        irm = _dry_run_irm
+
+    file_repls = file_replicas( path, resource_group_replicas = resource_group_replicas )
     file_rgs = [e[0] for e in file_repls]
 
     nrepl = len(file_rgs)
 
     if verbose:
-        print "repair", path, "replicas:", ["#%s (%s)" % (x[1], x[0]) for x in file_repls], "available:", rg_list
+        print "repair", path, "replicas:", ["#%s (%s)" % (x[1], x[0]) for x in file_repls], "available:", r_list
 
     if nrepl < min_:
-        # compute where to put new replicas according to rg_list priority order
-        possible_rgs = [x for x in rg_list if x not in file_rgs]
+        # compute where to put new replicas according to r_list priority order
+        possible_rgs = [x for x in r_list if x not in file_rgs]
 
-        if not possible_rgs: print "WARNING: cannot add replicas for \"%s\" because not engough online RGs" % path
+        if not possible_rgs: print "WARNING: cannot add replicas for \"%s\" because not enough online RGs" % path
 
         for i in range(max(0, min_ - nrepl)):
             print path, ": add replica (%s)" % possible_rgs[i]
-            retcode, output = _irepl(["-R", possible_rgs[i], path])
+            retcode, output = irepl( ["-R", possible_rgs[i], path] )
             if retcode != 0:
                 print "ERROR:", output
 
     if nrepl > max_:
 
-        # compute priority list of replicas to remove (rg_list reverse order)
-        remove_rgs = [x for x in rg_list if x in file_rgs]
+        # compute priority list of replicas to remove (r_list reverse order)
+        remove_rgs = [x for x in r_list if x in file_rgs]
         remove_rgs.reverse()
 
         for i in range(max(0, nrepl - max_)):
@@ -54,7 +65,7 @@ def repair_replicas_number(path, min_ = None, max_ = None, rg_list = None, verbo
                 rg_index = file_rgs.index(remove_rgs[i])
                 rg, repl_id = file_repls[rg_index]
                 print path, ": remove replica #%s (%s)" % (repl_id, rg)
-                retcode, output = _irm(["-n", repl_id, path])
+                retcode, output = irm( ["-n", repl_id, path] )
                 if retcode != 0:
                     print "ERROR:", output
 
@@ -96,9 +107,15 @@ $ %prog 2
     parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose", default=False,
                       help="be verbose")
-    parser.add_option("-G", "--resource-group", dest="resource_group", default=None,
-                      metavar="RESOURCE_GROUP",
-                      help="check replica numbers only for replicas in RESOURCE_GROUP")
+    parser.add_option( "--dry-run",
+                      action = "store_true", dest = "dry_run", default = False,
+                      help = "don't execute repair commands" )
+    parser.add_option( "-g", "--use-resource-groups",
+                      action = "store_true", dest = "resource_group_replicas", default = False,
+                      help = "work on resource groups replicas" )
+    parser.add_option( "--resource", dest = "resource", default = None,
+                      metavar="RESOURCE",
+                      help="check replica numbers only for replicas in RESOURCE")
 
     (options, args) = parser.parse_args()
 
@@ -144,10 +161,11 @@ $ %prog 2
     replicas = iquest_replicas(collection, user = guess_user(),
                                recursive = options.recursive)
 
-    if options.resource_group:
+    if options.resource:
         group_replicas = iquest_replicas(collection, user = guess_user(),
                                          recursive = options.recursive,
-                                         resource_group = options.resource_group)
+                                         resource = options.resource,
+                                         resource_group_replicas = options.resource_group_replicas )
 
         # zero all files replica numbers
         for k in replicas: replicas[k] = 0
@@ -158,7 +176,7 @@ $ %prog 2
     failed = replicas_failed_filter(replicas, condition)
 
     if options.verbose:
-        if failed: print "\n".join(["Failed: \"%s\" has %d replicas" % ff for f in failed])
+        if failed: print "\n".join( ["Failed: \"%s\" has %d replicas" % f for f in failed] )
         else: print "no file failed the check"
     else:
         if failed: print "\n".join(["%s: %s" % f for f in failed])
@@ -169,4 +187,5 @@ $ %prog 2
             print "WARNING: cannot repair with maximum replica number below 1"
         rg_list = mciaRGList()
         for f in failed:
-            repair_replicas_number(f[0], min_, max_, rg_list, verbose = options.verbose)
+            repair_replicas_number( f[0], min_, max_, rg_list, dry_run = options.dry_run, verbose = options.verbose,
+                                    resource_group_replicas = options.resource_group_replicas )
