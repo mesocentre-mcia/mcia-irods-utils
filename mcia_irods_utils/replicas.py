@@ -24,7 +24,7 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
         return ret
 
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
-                          output_filter = iquest_filter, verbose = True )
+                          output_filter = iquest_filter, verbose = False )
 
     condition1_list = ["COLL_NAME = '%s'" % path]
     condition2_list = ["COLL_NAME like '%s/%%'" % path]
@@ -82,21 +82,3 @@ def file_replicas( path, resource_group_replicas = True ):
     # FIXME: check return code
 
     return replicas
-
-def mciaRGList():
-    "return list of available Resource Groups"
-
-    listre = re.compile("^\s*\[(?P<content>.*)\]\s*$")
-    def list_parse(e):
-        m = listre.match(e)
-        if not m: raise TypeError
-        return m.group("content").split(",")
-        
-    irule = IrodsCommand("irule", ["mciaRGListWrite", "null", "ruleExecOut"],
-                         output_filter = list_parse, verbose = False)
-
-    retcode, ret = irule()
-
-    if retcode != 0: raise OSError
-
-    return ret

@@ -1,7 +1,10 @@
 #! /usr/bin/env python
 
-from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user
-from mcia_irods_utils import iquest_replicas, mciaRGList, file_replicas
+import re
+import random
+
+from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, parse_env
+from mcia_irods_utils import iquest_replicas, file_replicas
 
 def replicas_failed_filter(replicas, filter_):
     "filter replica statuses that fail conditions"
@@ -33,41 +36,105 @@ def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose =
         irm = _dry_run_irm
 
     file_repls = file_replicas( path, resource_group_replicas = resource_group_replicas )
-    file_rgs = [e[0] for e in file_repls]
+    file_rescs = [e[0] for e in file_repls]
 
-    nrepl = len(file_rgs)
+    nrepl = len(file_rescs)
 
     if verbose:
         print "repair", path, "replicas:", ["#%s (%s)" % (x[1], x[0]) for x in file_repls], "available:", r_list
 
     if nrepl < min_:
         # compute where to put new replicas according to r_list priority order
-        possible_rgs = [x for x in r_list if x not in file_rgs]
+        possible_rescs = [x for x in r_list if x not in file_rescs]
 
-        if not possible_rgs: print "WARNING: cannot add replicas for \"%s\" because not enough online RGs" % path
+        if not possible_rescs: print "WARNING: cannot add replicas for \"%s\" because not enough online Resources" % path
 
         for i in range(max(0, min_ - nrepl)):
-            print path, ": add replica (%s)" % possible_rgs[i]
-            retcode, output = irepl( ["-R", possible_rgs[i], path] )
+            print path, ": add replica (%s)" % possible_rescs[i]
+            retcode, output = irepl( ["-R", possible_rescs[i], path] )
             if retcode != 0:
                 print "ERROR:", output
 
     if nrepl > max_:
 
         # compute priority list of replicas to remove (r_list reverse order)
-        remove_rgs = [x for x in r_list if x in file_rgs]
-        remove_rgs.reverse()
+        remove_rescs = [x for x in r_list if x in file_rescs]
+        remove_rescs.reverse()
 
         for i in range(max(0, nrepl - max_)):
-            if i > len(remove_rgs):
-                print "WARNING: \"%s\" cannot remove %dith replica because RG not online" % (path, i)
+            if i > len(remove_rescs):
+                print "WARNING: \"%s\" cannot remove %dith replica because Resource not online" % ( path, i )
             else:
-                rg_index = file_rgs.index(remove_rgs[i])
+                rg_index = file_rescs.index(remove_rescs[i])
                 rg, repl_id = file_repls[rg_index]
                 print path, ": remove replica #%s (%s)" % (repl_id, rg)
                 retcode, output = irm( ["-n", repl_id, path] )
                 if retcode != 0:
                     print "ERROR:", output
+
+
+def irule_resc_list( rule ):
+    "call rule and split comma separated output"
+
+    listre = re.compile( "^\s*\[(?P<content>.*)\]\s*$" )
+    def list_parse( e ):
+        m = listre.match( e )
+        if not m: raise TypeError
+        return m.group( "content" ).split( "," )
+
+    irule = IrodsCommand( "irule", [rule, "null", "ruleExecOut"],
+                         output_filter = list_parse, verbose = False )
+
+    retcode, ret = irule()
+
+    if retcode != 0: raise OSError
+
+    return ret
+
+def random_resc_list( *args ):
+    "shuffle argument list"
+
+    args = list( args )
+    random.shuffle( args )
+
+    return args
+
+def get_resc_list():
+    """\
+retrieve a list of resources or a method to generate one. Available methods are:
+- random(a,b,c,d,...): shuffle list
+- irule(rule_name): call iRODS rule rule_name, provided it returns a comma separated list of resource names
+"""
+
+    var_name = "irodsRescList"
+    
+    var = None
+    if var_name in os.environ:
+        var = os.environ[var_name]
+    else:
+        envfile = os.path.expanduser( os.path.join( "~", ".irods", ".irodsEnv" ) )
+        env = parse_env( envfile )
+        if var_name in env:
+            var = env[var_name]
+
+    if var is None:
+        raise ValueError( "Resource list not found" )
+
+    function_re = re.compile( "^\s*(?P<function>\w+)\s*\((?P<args>.*)\)\s*$" )
+
+    m = function_re.match( var )
+    if m:
+        f = m.group( "function" )
+        args = m.group( "args" )
+
+        if f == "irule":
+            return irule_resc_list( args )
+        elif f == "random":
+            return random_resc_list( *args.split( "," ) )
+        else:
+            raise NotImplementedError( "irodsRescList function \"%s\" unknown" % f )
+
+    return [r.strip() for r in var.split( ',' )]
 
 if __name__ == "__main__":
     import sys
@@ -97,13 +164,14 @@ $ %prog 2
 
     parser = OptionParser(usage = usage)
     parser.add_option("-c", "--collection", dest="collection", default='.',
-                      help="check files in COLL (default: .)", metavar="COLL")
+                      help = "check files in COLL (default: %default)", metavar = "COLL" )
     parser.add_option("-r", "--recursive",
                       action="store_true", dest="recursive", default=False,
                       help="check files in subcollections")
     parser.add_option("--repair",
                       action="store_true", dest="repair", default=False,
-                      help="try to repair replicas numbers according to specifications")
+                      help = "try to repair replicas numbers according to specifications and irodsRecList in ~/.irods/.irodsEnv "
+                      "or shell environment variable" )
     parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose", default=False,
                       help="be verbose")
@@ -118,6 +186,8 @@ $ %prog 2
                       help="check replica numbers only for replicas in RESOURCE")
 
     (options, args) = parser.parse_args()
+
+    print get_resc_list()
 
     condition = None
     min_ = None
@@ -185,7 +255,7 @@ $ %prog 2
         if options.verbose: print "Begin repair"
         if max_ <= 0:
             print "WARNING: cannot repair with maximum replica number below 1"
-        rg_list = mciaRGList()
+        r_list = get_resc_list()
         for f in failed:
-            repair_replicas_number( f[0], min_, max_, rg_list, dry_run = options.dry_run, verbose = options.verbose,
+            repair_replicas_number( f[0], min_, max_, r_list, dry_run = options.dry_run, verbose = options.verbose,
                                     resource_group_replicas = options.resource_group_replicas )
