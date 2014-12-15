@@ -34,3 +34,7 @@ Some iRODS iCommands have been wrapped to allow server-side wildcards to be used
 ## Disk usage
 
 * `idu`
+
+## Replica number verification
+
+* `irepl-check` - check and eventually repair file replicas number
