@@ -3,7 +3,7 @@
 import re
 import random
 
-from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, parse_env
+from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
 
 def replicas_failed_filter(replicas, filter_):
@@ -106,17 +106,8 @@ retrieve a list of resources or a method to generate one. Available methods are:
 - irule(rule_name): call iRODS rule rule_name, provided it returns a comma separated list of resource names
 """
 
-    var_name = "irodsRescList"
+    var = getenv( "irodsRescList" )
     
-    var = None
-    if var_name in os.environ:
-        var = os.environ[var_name]
-    else:
-        envfile = os.path.expanduser( os.path.join( "~", ".irods", ".irodsEnv" ) )
-        env = parse_env( envfile )
-        if var_name in env:
-            var = env[var_name]
-
     if var is None:
         raise ValueError( "Resource list not found" )
 
@@ -160,6 +151,10 @@ $ %prog 3:
 
 # check files with exactly 2 replicas
 $ %prog 2
+
+Notes:
+
+Repair behaviour is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
 """
 
     parser = OptionParser(usage = usage)
@@ -170,8 +165,8 @@ $ %prog 2
                       help="check files in subcollections")
     parser.add_option("--repair",
                       action="store_true", dest="repair", default=False,
-                      help = "try to repair replicas numbers according to specifications and irodsRecList in ~/.irods/.irodsEnv "
-                      "or shell environment variable" )
+                      help = "try to repair replicas numbers according to specifications and variable irodsRescList in "
+                      "~/.irods/.irodsEnv or shell environment variable" )
     parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose", default=False,
                       help="be verbose")
@@ -179,15 +174,14 @@ $ %prog 2
                       action = "store_true", dest = "dry_run", default = False,
                       help = "don't execute repair commands" )
     parser.add_option( "-g", "--use-resource-groups",
-                      action = "store_true", dest = "resource_group_replicas", default = False,
-                      help = "work on resource groups replicas" )
+                      action = "store_true", dest = "resource_group_replicas", default = getenv( "irodsUseRescGroups" ) == "true",
+                      help = "work on resource groups replicas (can be configured from variable irodsUseRescGroups in "
+                      "~/.irods/.irodsEnv or shell environment variable. actual defaut: %default)" )
     parser.add_option( "--resource", dest = "resource", default = None,
                       metavar="RESOURCE",
                       help="check replica numbers only for replicas in RESOURCE")
 
     (options, args) = parser.parse_args()
-
-    print get_resc_list()
 
     condition = None
     min_ = None
