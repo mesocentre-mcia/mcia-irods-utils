@@ -115,3 +115,14 @@ def isrel(path):
     "check if path is relative"
     return not path.startswith('/')
 
+def getenv( var_name ):
+    var = None
+    if var_name in os.environ:
+        var = os.environ[var_name]
+    else:
+        envfile = os.path.expanduser( os.path.join( "~", ".irods", ".irodsEnv" ) )
+        env = parse_env( envfile )
+        if var_name in env:
+            var = env[var_name]
+
+    return var

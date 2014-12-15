@@ -1,0 +1,255 @@
+#! /usr/bin/env python
+
+import re
+import random
+
+from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
+from mcia_irods_utils import iquest_replicas, file_replicas
+
+def replicas_failed_filter(replicas, filter_):
+    "filter replica statuses that fail conditions"
+
+    def _failed_filter(e):
+        return not filter_(e[1])
+
+    failed = filter(_failed_filter, replicas.items())
+
+    return failed
+
+_irepl = IrodsCommand("irepl")
+_irm = IrodsCommand("irm", ["-f"])
+def _dry_run_irepl( cmdlist ):
+    print "DRY RUN: irepl " + " ".join( cmdlist )
+    return 0, None
+def _dry_run_irm( cmdlist ):
+    print "DRY RUN: irm -f " + " ".join( cmdlist )
+    return 0, None
+
+def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False ):
+    "issues actions to fix replica numbers according to min_/max_ target"
+
+    irepl = _irepl
+    irm = _irm
+
+    if dry_run:
+        irepl = _dry_run_irepl
+        irm = _dry_run_irm
+
+    file_repls = file_replicas( path, resource_group_replicas = resource_group_replicas )
+    file_rescs = [e[0] for e in file_repls]
+
+    nrepl = len(file_rescs)
+
+    if verbose:
+        print "repair", path, "replicas:", ["#%s (%s)" % (x[1], x[0]) for x in file_repls], "available:", r_list
+
+    if nrepl < min_:
+        # compute where to put new replicas according to r_list priority order
+        possible_rescs = [x for x in r_list if x not in file_rescs]
+
+        if not possible_rescs: print "WARNING: cannot add replicas for \"%s\" because not enough online Resources" % path
+
+        for i in range(max(0, min_ - nrepl)):
+            print path, ": add replica (%s)" % possible_rescs[i]
+            retcode, output = irepl( ["-R", possible_rescs[i], path] )
+            if retcode != 0:
+                print "ERROR:", output
+
+    if nrepl > max_:
+
+        # compute priority list of replicas to remove (r_list reverse order)
+        remove_rescs = [x for x in r_list if x in file_rescs]
+        remove_rescs.reverse()
+
+        for i in range(max(0, nrepl - max_)):
+            if i > len(remove_rescs):
+                print "WARNING: \"%s\" cannot remove %dith replica because Resource not online" % ( path, i )
+            else:
+                rg_index = file_rescs.index(remove_rescs[i])
+                rg, repl_id = file_repls[rg_index]
+                print path, ": remove replica #%s (%s)" % (repl_id, rg)
+                retcode, output = irm( ["-n", repl_id, path] )
+                if retcode != 0:
+                    print "ERROR:", output
+
+
+def irule_resc_list( rule ):
+    "call rule and split comma separated output"
+
+    listre = re.compile( "^\s*\[(?P<content>.*)\]\s*$" )
+    def list_parse( e ):
+        m = listre.match( e )
+        if not m: raise TypeError
+        return m.group( "content" ).split( "," )
+
+    irule = IrodsCommand( "irule", [rule, "null", "ruleExecOut"],
+                         output_filter = list_parse, verbose = False )
+
+    retcode, ret = irule()
+
+    if retcode != 0: raise OSError
+
+    return ret
+
+def random_resc_list( *args ):
+    "shuffle argument list"
+
+    args = list( args )
+    random.shuffle( args )
+
+    return args
+
+def get_resc_list():
+    """\
+retrieve a list of resources or a method to generate one. Available methods are:
+- random(a,b,c,d,...): shuffle list
+- irule(rule_name): call iRODS rule rule_name, provided it returns a comma separated list of resource names
+"""
+
+    var = getenv( "irodsRescList" )
+    
+    if var is None:
+        raise ValueError( "Resource list not found" )
+
+    function_re = re.compile( "^\s*(?P<function>\w+)\s*\((?P<args>.*)\)\s*$" )
+
+    m = function_re.match( var )
+    if m:
+        f = m.group( "function" )
+        args = m.group( "args" )
+
+        if f == "irule":
+            return irule_resc_list( args )
+        elif f == "random":
+            return random_resc_list( *args.split( "," ) )
+        else:
+            raise NotImplementedError( "irodsRescList function \"%s\" unknown" % f )
+
+    return [r.strip() for r in var.split( ',' )]
+
+if __name__ == "__main__":
+    import sys
+    import os.path
+
+    from optparse import OptionParser
+
+    usage="""\
+usage: %prog [options] [--] <e>|<m>:|:<M>|<m>:<M>
+
+checks wether files respect replica number condition and prints files which fail the test.
+
+There are 4 types of possible conditions:
+<e> exact number of replicas 
+<m>: minimum number of replicas
+:<M> maximum number of replicas
+<m>:<M> range of number of replicas (between <m> and <M>)
+
+Examples:
+
+# check files with 3 replicas or more
+$ %prog 3:
+
+# check files with exactly 2 replicas
+$ %prog 2
+
+Notes:
+
+Repair behaviour is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
+"""
+
+    parser = OptionParser(usage = usage)
+    parser.add_option("-c", "--collection", dest="collection", default='.',
+                      help = "check files in COLL (default: %default)", metavar = "COLL" )
+    parser.add_option("-r", "--recursive",
+                      action="store_true", dest="recursive", default=False,
+                      help="check files in subcollections")
+    parser.add_option("--repair",
+                      action="store_true", dest="repair", default=False,
+                      help = "try to repair replicas numbers according to specifications and variable irodsRescList in "
+                      "~/.irods/.irodsEnv or shell environment variable" )
+    parser.add_option("-v", "--verbose",
+                      action="store_true", dest="verbose", default=False,
+                      help="be verbose")
+    parser.add_option( "--dry-run",
+                      action = "store_true", dest = "dry_run", default = False,
+                      help = "don't execute repair commands" )
+    parser.add_option( "-g", "--use-resource-groups",
+                      action = "store_true", dest = "resource_group_replicas", default = getenv( "irodsUseRescGroups" ) == "true",
+                      help = "work on resource groups replicas (can be configured from variable irodsUseRescGroups in "
+                      "~/.irods/.irodsEnv or shell environment variable. actual defaut: %default)" )
+    parser.add_option( "--resource", dest = "resource", default = None,
+                      metavar="RESOURCE",
+                      help="check replica numbers only for replicas in RESOURCE")
+
+    (options, args) = parser.parse_args()
+
+    condition = None
+    min_ = None
+    max_ = None
+
+    for arg in args:
+        if arg.endswith(':'):
+            replnum = int (arg[:-1])
+            condition = lambda e: e >= replnum
+            min_ = replnum
+        elif arg.startswith(':'):
+            replnum = int (arg[1:])
+            condition = lambda e: e <= replnum
+            max_ = replnum
+        elif ':' in arg:
+            m, M = [int(e) for e in arg.split(':')]
+            condition = lambda e: e>=m and e<=M
+            min_ = m
+            max_ = M
+        else:
+            replnum = int (arg)
+            condition = lambda e: e == replnum
+            min_ = replnum
+            max_ = replnum
+
+    if not condition: sys.exit(0)
+
+    collection = options.collection
+
+    if isrel(collection):
+        icwd = guess_icwd()
+        collection = os.path.normpath(icwd + '/' + collection)
+
+    if options.verbose:
+        print "Check collection:", collection
+        if options.recursive:
+            print "Recursive check"
+
+    
+
+    replicas = iquest_replicas(collection, user = guess_user(),
+                               recursive = options.recursive)
+
+    if options.resource:
+        group_replicas = iquest_replicas(collection, user = guess_user(),
+                                         recursive = options.recursive,
+                                         resource = options.resource,
+                                         resource_group_replicas = options.resource_group_replicas )
+
+        # zero all files replica numbers
+        for k in replicas: replicas[k] = 0
+
+        # replace replica numbers by resource group replica numbers
+        for k, v in group_replicas.iteritems(): replicas[k] = v
+
+    failed = replicas_failed_filter(replicas, condition)
+
+    if options.verbose:
+        if failed: print "\n".join( ["Failed: \"%s\" has %d replicas" % f for f in failed] )
+        else: print "no file failed the check"
+    else:
+        if failed: print "\n".join(["%s: %s" % f for f in failed])
+
+    if options.repair and failed:
+        if options.verbose: print "Begin repair"
+        if max_ <= 0:
+            print "WARNING: cannot repair with maximum replica number below 1"
+        r_list = get_resc_list()
+        for f in failed:
+            repair_replicas_number( f[0], min_, max_, r_list, dry_run = options.dry_run, verbose = options.verbose,
+                                    resource_group_replicas = options.resource_group_replicas )
