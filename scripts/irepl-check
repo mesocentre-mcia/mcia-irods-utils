@@ -5,12 +5,13 @@ import random
 
 from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
+from mcia_irods_utils import iquest_collection_metadata
 
 def replicas_failed_filter(replicas, filter_):
     "filter replica statuses that fail conditions"
 
     def _failed_filter(e):
-        return not filter_(e[1])
+        return not filter_( e )
 
     failed = filter(_failed_filter, replicas.items())
 
@@ -25,12 +26,18 @@ def _dry_run_itrim( cmdlist ):
     print "DRY RUN: itrim " + " ".join( cmdlist )
     return 0, None
 
-def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
+def repair_replicas_number( path, min_, max_, r_list, metadata_dict = None, dry_run = False, verbose = False, resource_group_replicas = False,
                             admin = False ):
-    "issues actions to fix replica numbers according to min_/max_ target"
+    "issues actions to fix replica numbers according to min_/max_ target or metadata_dict specification"
+
 
     irepl = _irepl
     itrim = _itrim
+
+    coll = os.path.dirname( path )
+    if metadata_dict and coll in metadata_dict:
+        min_ = max( min_, metadata_dict[coll] )
+        max_ = min( max_, metadata_dict[coll] )
 
     if dry_run:
         irepl = _dry_run_irepl
@@ -133,6 +140,16 @@ retrieve a list of resources or a method to generate one. Available methods are:
 
     return [r.strip() for r in var.split( ',' )]
 
+def load_collection_metadata_dict( collection, metaname, recursive ):
+    metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
+
+    ret = {}
+
+    for c, _a, v, _u in metadatas:
+        ret[c] = int( v )
+
+    return ret
+
 if __name__ == "__main__":
     import sys
     import os.path
@@ -140,15 +157,17 @@ if __name__ == "__main__":
     from optparse import OptionParser
 
     usage="""\
-usage: %prog [options] [--] <e>|<m>:|:<M>|<m>:<M>
+usage: %prog [options] [--] <condition>
 
 checks wether files respect replica number condition and prints files which fail the test.
 
 There are 4 types of possible conditions:
-<e> exact number of replicas 
-<m>: minimum number of replicas
-:<M> maximum number of replicas
-<m>:<M> range of number of replicas (between <m> and <M>)
+  - <e> exact number of replicas
+  - <m>: minimum number of replicas
+  - :<M> maximum number of replicas
+  - <m>:<M> range of number of replicas (between <m> and <M>)
+  - <metaname> name of an integer collection metadata used to locally fix replication factor (files are ignored if metadata
+    is absent from collection)
 
 Examples:
 
@@ -159,8 +178,7 @@ $ %prog 3:
 $ %prog 2
 
 Notes:
-
-Repair behaviour is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
+  - Repair behaviour is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
 """
 
     parser = OptionParser(usage = usage)
@@ -196,36 +214,43 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
     (options, args) = parser.parse_args()
 
     condition = None
-    min_ = None
-    max_ = None
+    min_ = 0
+    max_ = sys.maxint
+    metadata_dict = None
+
+    collection = options.collection
+
+    if isrel( collection ):
+        icwd = guess_icwd()
+        collection = os.path.normpath( icwd + '/' + collection )
 
     for arg in args:
         if arg.endswith(':'):
             replnum = int (arg[:-1])
-            condition = lambda e: e >= replnum
+            condition = lambda e: e[1] >= replnum
             min_ = replnum
         elif arg.startswith(':'):
             replnum = int (arg[1:])
-            condition = lambda e: e <= replnum
+            condition = lambda e: e[1] <= replnum
             max_ = replnum
         elif ':' in arg:
             m, M = [int(e) for e in arg.split(':')]
-            condition = lambda e: e>=m and e<=M
+            condition = lambda e: e[1] >= m and e[1] <= M
             min_ = m
             max_ = M
         else:
-            replnum = int (arg)
-            condition = lambda e: e == replnum
-            min_ = replnum
-            max_ = replnum
-
+            try:
+                replnum = int ( arg )
+                condition = lambda e: e[1] == replnum
+                min_ = replnum
+                max_ = replnum
+            except ValueError:
+                metadata_dict = load_collection_metadata_dict( collection, arg, options.recursive )
+                def check(e):
+                    coll = os.path.dirname( e[0] )
+                    return ( coll not in metadata_dict ) or e[1] == metadata_dict[coll]
+                condition = check
     if not condition: sys.exit(0)
-
-    collection = options.collection
-
-    if isrel(collection):
-        icwd = guess_icwd()
-        collection = os.path.normpath(icwd + '/' + collection)
 
     if options.verbose:
         print "Check collection:", collection
@@ -256,7 +281,7 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
         if failed: print "\n".join( ["Failed: \"%s\" has %d replicas" % f for f in failed] )
         else: print "no file failed the check"
     else:
-        if failed: print "\n".join(["%s: %s" % f for f in failed])
+        if failed: print "\n".join( ["%s : %s" % f for f in failed] )
 
     if options.repair and failed:
         if options.verbose: print "Begin repair"
@@ -264,5 +289,10 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
             print "WARNING: cannot repair with maximum replica number below 1"
         r_list = get_resc_list()
         for f in failed:
+<<<<<<< HEAD
             repair_replicas_number( f[0], min_, max_, r_list, dry_run = options.dry_run, verbose = options.verbose,
                                     resource_group_replicas = options.resource_group_replicas, admin = options.admin )
+=======
+            repair_replicas_number( f[0], min_, max_, r_list, metadata_dict = metadata_dict, dry_run = options.dry_run,
+                                    verbose = options.verbose, resource_group_replicas = options.resource_group_replicas )
+>>>>>>> allow to check against collection metadata value
