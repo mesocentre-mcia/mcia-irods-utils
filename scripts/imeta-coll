@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv, iargw
+from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv, iargw, iquest_collection_metadata
 
 def iquest_filter( e ):
     if "CAT_NO_ROWS_FOUND" in e: return ""
@@ -35,56 +35,18 @@ def imeta_rf_set( collection, metaname, metavalue, recursive = False ):
             return
 
 def imeta_rf_get( collection, metaname, metavalue, recursive = False ):
-    iquest = IrodsCommand( "iquest", ["%s: %s"], output_filter = iquest_filter )
+    metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
 
-    retcode, output = iquest( ["select COLL_NAME, META_COLL_ATTR_VALUE where META_COLL_ATTR_NAME = '%s' and COLL_NAME = '%s'" %
-                              ( metaname, collection )] )
-
-    if retcode != 0:
-        print "ERROR:", output
-        return
-
-    if recursive:
-        retcode, output2 = iquest( ["select COLL_NAME, META_COLL_ATTR_VALUE where META_COLL_ATTR_NAME = '%s' and COLL_NAME like '%s/%%'" %
-                                   ( metaname, collection )] )
-
-        if retcode != 0:
-            print "ERROR:", output
-            return
-        if output2:
-            output += "\n" + output2
-
-    if output:
-        print output.strip()
+    if metadatas:
+        for c, a, v, u in metadatas:
+            print c, ":", "%s=%s" % ( a, v ), u
 
 def imeta_rf_del( collection, metaname, metavalue, recursive = False ):
-    def iquest_filter2( e ):
-        if "CAT_NO_ROWS_FOUND" in e: return []
-
-        return [x.split( ":", 2 ) for x in e.strip().split( "\n" )]
-
-    iquest = IrodsCommand( "iquest", ["%s:%s:%s"], output_filter = iquest_filter2 )
-
-    retcode, output = iquest( ["select COLL_NAME, META_COLL_ATTR_NAME, META_COLL_ATTR_VALUE where META_COLL_ATTR_NAME = '%s' and COLL_NAME = '%s'" %
-                              ( metaname, collection )] )
-
-    if retcode != 0:
-        print "ERROR:", output
-        return
-
-    if recursive:
-        retcode, output2 = iquest( ["select COLL_NAME, META_COLL_ATTR_NAME, META_COLL_ATTR_VALUE where META_COLL_ATTR_NAME = '%s' and COLL_NAME like '%s/%%'" %
-                                   ( metaname, collection )] )
-
-        if retcode != 0:
-            print "ERROR:", output
-            return
-        if output2:
-            output += output2
+    metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
 
     imeta = IrodsCommand( "imeta", ["rm", "-C"] )
-    for c, n, v in output:
-        retcode, output = imeta( [c, n, v] )
+    for c, a, v, _u in metadatas:
+        retcode, output = imeta( [c, a, v] )
 
         if retcode != 0:
             print "ERROR:", output
