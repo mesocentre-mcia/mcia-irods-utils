@@ -26,18 +26,17 @@ def _dry_run_itrim( cmdlist ):
     print "DRY RUN: itrim " + " ".join( cmdlist )
     return 0, None
 
+<<<<<<< HEAD
 def repair_replicas_number( path, min_, max_, r_list, metadata_dict = None, dry_run = False, verbose = False, resource_group_replicas = False,
                             admin = False ):
+=======
+def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False ):
+>>>>>>> keep metadata logic outside of repair_replica_number()
     "issues actions to fix replica numbers according to min_/max_ target or metadata_dict specification"
 
 
     irepl = _irepl
     itrim = _itrim
-
-    coll = os.path.dirname( path )
-    if metadata_dict and coll in metadata_dict:
-        min_ = max( min_, metadata_dict[coll] )
-        max_ = min( max_, metadata_dict[coll] )
 
     if dry_run:
         irepl = _dry_run_irepl
@@ -287,8 +286,10 @@ Notes:
         if options.verbose: print "Begin repair"
         if max_ <= 0:
             print "WARNING: cannot repair with maximum replica number below 1"
+            break
         r_list = get_resc_list()
         for f in failed:
+<<<<<<< HEAD
 <<<<<<< HEAD
             repair_replicas_number( f[0], min_, max_, r_list, dry_run = options.dry_run, verbose = options.verbose,
                                     resource_group_replicas = options.resource_group_replicas, admin = options.admin )
@@ -296,3 +297,15 @@ Notes:
             repair_replicas_number( f[0], min_, max_, r_list, metadata_dict = metadata_dict, dry_run = options.dry_run,
                                     verbose = options.verbose, resource_group_replicas = options.resource_group_replicas )
 >>>>>>> allow to check against collection metadata value
+=======
+            mmin = min_
+            mmax = max_
+
+            coll = os.path.dirname( path )
+            if metadata_dict and coll in metadata_dict:
+                mmin = max( mmin, metadata_dict[coll] )
+                mmax = min( mmax, metadata_dict[coll], 1 )
+
+            repair_replicas_number( f[0], mmin, mmax, r_list, dry_run = options.dry_run, verbose = options.verbose,
+                                    resource_group_replicas = options.resource_group_replicas )
+>>>>>>> keep metadata logic outside of repair_replica_number()
