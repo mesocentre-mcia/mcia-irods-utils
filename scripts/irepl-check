@@ -286,7 +286,7 @@ Notes:
         if options.verbose: print "Begin repair"
         if max_ <= 0:
             print "WARNING: cannot repair with maximum replica number below 1"
-            break
+            sys.exit( 0 )
         r_list = get_resc_list()
         for f in failed:
 <<<<<<< HEAD
