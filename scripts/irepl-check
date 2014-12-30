@@ -7,13 +7,16 @@ from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
 from mcia_irods_utils import iquest_collection_metadata
 
-def replicas_failed_filter(replicas, filter_):
-    "filter replica statuses that fail conditions"
+def replicas_failed_filter( replicas, filters ):
+    "filter replica statuses that fail each condition in filters list"
 
-    def _failed_filter(e):
-        return not filter_( e )
+    failed = replicas.items()
 
-    failed = filter(_failed_filter, replicas.items())
+    for filter_ in filters:
+        def _failed_filter( e ):
+            return not filter_( e )
+
+    failed = filter( _failed_filter, failed )
 
     return failed
 
@@ -156,17 +159,17 @@ if __name__ == "__main__":
     from optparse import OptionParser
 
     usage="""\
-usage: %prog [options] [--] <condition>
+usage: %prog [options] [--] [<condition>]...
 
-checks wether files respect replica number condition and prints files which fail the test.
+checks wether files respect replica number condition and prints files which fail the test. Multiple conditions are logically OR'ed.
 
-There are 4 types of possible conditions:
+There are 5 types of possible conditions:
   - <e> exact number of replicas
   - <m>: minimum number of replicas
   - :<M> maximum number of replicas
   - <m>:<M> range of number of replicas (between <m> and <M>)
-  - <metaname> name of an integer collection metadata used to locally fix replication factor (files are ignored if metadata
-    is absent from collection)
+  - <metaname> name of an integer collection metadata used to locally fix the replication factor (files are ignored if
+    metadata is absent from collection)
 
 Examples:
 
@@ -177,7 +180,7 @@ $ %prog 3:
 $ %prog 2
 
 Notes:
-  - Repair behaviour is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
+  - Repair behaviour (--repair) is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
 """
 
     parser = OptionParser(usage = usage)
@@ -223,6 +226,7 @@ Notes:
         icwd = guess_icwd()
         collection = os.path.normpath( icwd + '/' + collection )
 
+    conditions = []
     for arg in args:
         if arg.endswith(':'):
             replnum = int (arg[:-1])
@@ -249,7 +253,10 @@ Notes:
                     coll = os.path.dirname( e[0] )
                     return ( coll not in metadata_dict ) or e[1] == metadata_dict[coll]
                 condition = check
-    if not condition: sys.exit(0)
+
+        conditions.append( condition )
+
+    if not conditions: sys.exit( 0 )
 
     if options.verbose:
         print "Check collection:", collection
@@ -274,7 +281,7 @@ Notes:
         # replace replica numbers by resource group replica numbers
         for k, v in group_replicas.iteritems(): replicas[k] = v
 
-    failed = replicas_failed_filter(replicas, condition)
+    failed = replicas_failed_filter( replicas, conditions )
 
     if options.verbose:
         if failed: print "\n".join( ["Failed: \"%s\" has %d replicas" % f for f in failed] )
