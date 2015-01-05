@@ -149,6 +149,50 @@ def load_collection_metadata_dict( collection, metaname, recursive ):
 
     return ret
 
+def parse_condition( arg, collection, recursive ):
+    condition = None
+    fallback = None
+    if '+' in arg:
+        # read fallback from the rest of arguments
+        # warning: only metadata accepts fallback, otherwise, it is ignored
+        arg, next = arg.split( '+' )
+        fallback = parse_condition( next, collection, recursive )
+
+    if arg.endswith( ':' ):
+        replnum = int ( arg[:-1] )
+        condition = lambda e: e[1] >= replnum
+        min_ = replnum
+    elif arg.startswith( ':' ):
+        replnum = int ( arg[1:] )
+        condition = lambda e: e[1] <= replnum
+        max_ = replnum
+    elif ':' in arg:
+        m, M = [int( e ) for e in arg.split( ':' )]
+        condition = lambda e: e[1] >= m and e[1] <= M
+        min_ = m
+        max_ = M
+    else:
+        try:
+            replnum = int ( arg )
+            condition = lambda e: e[1] == replnum
+            min_ = replnum
+            max_ = replnum
+        except ValueError:
+            meta = arg
+
+            metadata_dict = load_collection_metadata_dict( collection, meta, recursive )
+            def check( e ):
+                coll = os.path.dirname( e[0] )
+                if coll not in metadata_dict:
+                    if fallback is not None:
+                        return fallback( e )
+                    return True
+                return e[1] == metadata_dict[coll]
+            condition = check
+
+    return condition 
+
+
 if __name__ == "__main__":
     import sys
     import os.path
@@ -165,8 +209,8 @@ There are 5 types of possible conditions:
   - <m>: minimum number of replicas
   - :<M> maximum number of replicas
   - <m>:<M> range of number of replicas (between <m> and <M>)
-  - <metaname> name of an integer collection metadata used to locally fix the replication factor (files are ignored if
-    metadata is absent from collection)
+  - <metaname>[+<fallback-condition>] check against <metaname> metadata and fallback to <fallback-condition> when <metaname> is missing
+    from collection. Files are ignored if metadata is missing from collection and <fallback-condition> is not provided
 
 Examples:
 
@@ -175,6 +219,9 @@ $ %prog 3:
 
 # check files with exactly 2 replicas
 $ %prog 2
+
+# check against replFactor integer metadata and fallback to replica number of 3 when metadata is missing
+$ %prog -r replFactor+3
 
 Notes:
   - Repair behaviour (--repair) is to be configured with variable irodsRescList and irodsUseRescGroups (or command line options -g)
@@ -225,31 +272,7 @@ Notes:
 
     conditions = []
     for arg in args:
-        if arg.endswith(':'):
-            replnum = int (arg[:-1])
-            condition = lambda e: e[1] >= replnum
-            min_ = replnum
-        elif arg.startswith(':'):
-            replnum = int (arg[1:])
-            condition = lambda e: e[1] <= replnum
-            max_ = replnum
-        elif ':' in arg:
-            m, M = [int(e) for e in arg.split(':')]
-            condition = lambda e: e[1] >= m and e[1] <= M
-            min_ = m
-            max_ = M
-        else:
-            try:
-                replnum = int ( arg )
-                condition = lambda e: e[1] == replnum
-                min_ = replnum
-                max_ = replnum
-            except ValueError:
-                metadata_dict = load_collection_metadata_dict( collection, arg, options.recursive )
-                def check(e):
-                    coll = os.path.dirname( e[0] )
-                    return ( coll not in metadata_dict ) or e[1] == metadata_dict[coll]
-                condition = check
+        condition = parse_condition( arg, collection, options.recursive )
 
         conditions.append( condition )
 
