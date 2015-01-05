@@ -17,23 +17,29 @@ def replicas_failed_filter(replicas, filter_):
     return failed
 
 _irepl = IrodsCommand("irepl")
-_irm = IrodsCommand("irm", ["-f"])
+_itrim = IrodsCommand( "itrim" )
 def _dry_run_irepl( cmdlist ):
     print "DRY RUN: irepl " + " ".join( cmdlist )
     return 0, None
-def _dry_run_irm( cmdlist ):
-    print "DRY RUN: irm -f " + " ".join( cmdlist )
+def _dry_run_itrim( cmdlist ):
+    print "DRY RUN: itrim " + " ".join( cmdlist )
     return 0, None
 
-def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False ):
+def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
+                            admin = False ):
     "issues actions to fix replica numbers according to min_/max_ target"
 
     irepl = _irepl
-    irm = _irm
+    itrim = _itrim
 
     if dry_run:
         irepl = _dry_run_irepl
-        irm = _dry_run_irm
+        itrim = _dry_run_itrim
+
+    opts = []
+
+    if admin:
+        opts.append( "-M" )
 
     file_repls = file_replicas( path, resource_group_replicas = resource_group_replicas )
     file_rescs = [e[0] for e in file_repls]
@@ -51,7 +57,7 @@ def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose =
 
         for i in range(max(0, min_ - nrepl)):
             print path, ": add replica (%s)" % possible_rescs[i]
-            retcode, output = irepl( ["-R", possible_rescs[i], path] )
+            retcode, output = irepl( opts + ["-R", possible_rescs[i], path] )
             if retcode != 0:
                 print "ERROR:", output
 
@@ -68,7 +74,7 @@ def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose =
                 rg_index = file_rescs.index(remove_rescs[i])
                 rg, repl_id = file_repls[rg_index]
                 print path, ": remove replica #%s (%s)" % (repl_id, rg)
-                retcode, output = irm( ["-n", repl_id, path] )
+                retcode, output = itrim( opts + ["-n", repl_id, path] )
                 if retcode != 0:
                     print "ERROR:", output
 
@@ -180,9 +186,12 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
     parser.add_option( "--resource", dest = "resource", default = None,
                       metavar="RESOURCE",
                       help="check replica numbers only for replicas in RESOURCE")
-    parser.add_option( "-u", "--user", dest = "user", default = guess_user(),
+    parser.add_option( "-u", "--user", dest = "user", default = None,
                       metavar = "USER",
                       help = "check replica numbers only for user USER" )
+    parser.add_option( "-M", "--admin",
+                      action = "store_true", dest = "admin", default = False,
+                      help = "admin mode: admin user uses this option to check other users files" )
 
     (options, args) = parser.parse_args()
 
@@ -223,9 +232,10 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
         if options.recursive:
             print "Recursive check"
 
-    
+    user = options.user
+    if not ( user or options.admin ): user = guess_user()
 
-    replicas = iquest_replicas( collection, user = options.user,
+    replicas = iquest_replicas( collection, user = user,
                                recursive = options.recursive)
 
     if options.resource:
@@ -255,4 +265,4 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
         r_list = get_resc_list()
         for f in failed:
             repair_replicas_number( f[0], min_, max_, r_list, dry_run = options.dry_run, verbose = options.verbose,
-                                    resource_group_replicas = options.resource_group_replicas )
+                                    resource_group_replicas = options.resource_group_replicas, admin = options.admin )
