@@ -180,6 +180,9 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
     parser.add_option( "--resource", dest = "resource", default = None,
                       metavar="RESOURCE",
                       help="check replica numbers only for replicas in RESOURCE")
+    parser.add_option( "-u", "--user", dest = "user", default = guess_user(),
+                      metavar = "USER",
+                      help = "check replica numbers only for user USER" )
 
     (options, args) = parser.parse_args()
 
@@ -222,7 +225,7 @@ Repair behaviour is to be configured with variable irodsRescList and irodsUseRes
 
     
 
-    replicas = iquest_replicas(collection, user = guess_user(),
+    replicas = iquest_replicas( collection, user = options.user,
                                recursive = options.recursive)
 
     if options.resource:
