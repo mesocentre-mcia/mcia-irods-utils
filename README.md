@@ -38,3 +38,7 @@ Some iRODS iCommands have been wrapped to allow server-side wildcards to be used
 ## Replica number verification
 
 * `irepl-check` - check and eventually repair file replicas number
+
+## Metadata
+
+* `imeta-coll` - manage metadata on collections, eventually recursively

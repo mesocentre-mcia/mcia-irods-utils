@@ -1,6 +1,5 @@
 # -*- python -*-
 
-import re
 import os.path
 
 from icommand import IrodsCommand

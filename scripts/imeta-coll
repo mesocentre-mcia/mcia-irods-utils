@@ -1,0 +1,116 @@
+#! /usr/bin/env python
+
+from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv, iargw, iquest_collection_metadata
+
+def iquest_filter( e ):
+    if "CAT_NO_ROWS_FOUND" in e: return ""
+
+    return e.strip()
+
+def collection_list( collection, recursive ):
+    collections = [collection]
+    iquest = IrodsCommand( "iquest", ["%s"], output_filter = iquest_filter )
+
+    retcode, output = iquest( ["select COLL_NAME where COLL_NAME like '%s/%%'" % collection] )
+
+    if retcode != 0:
+        print "ERROR:", output
+        return
+
+    collections += output.split( "\n" )
+
+    return collections
+
+def imeta_rf_set( collection, metaname, metavalue, recursive = False ):
+    imeta_set = IrodsCommand( "imeta", ["set", "-C"] )
+
+    collections = collection_list( collection, recursive )
+
+    for collection in collections:
+
+        retcode, output = imeta_set( [collection, metaname, metavalue] )
+
+        if retcode != 0:
+            print "ERROR:", output
+            return
+
+def imeta_rf_get( collection, metaname, metavalue, recursive = False ):
+    metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
+
+    if metadatas:
+        for c, a, v, u in metadatas:
+            print c, ":", "%s=%s" % ( a, v ), u
+
+def imeta_rf_del( collection, metaname, metavalue, recursive = False ):
+    metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
+
+    imeta = IrodsCommand( "imeta", ["rm", "-C"] )
+    for c, a, v, _u in metadatas:
+        retcode, output = imeta( [c, a, v] )
+
+        if retcode != 0:
+            print "ERROR:", output
+            return
+
+
+if __name__ == "__main__":
+    import sys
+    import os.path
+
+    from optparse import OptionParser
+
+    usage = """\
+usage: %prog --report
+usage: %prog [options] [command] [collection]...
+
+Manage collection metadata
+
+Command has the following possible syntax:
+  - "<metaname>": display metadata value
+  - "<metaname>=<value>": set metadata metaname to metavalue value
+  - "~<metaname>": remove metadata
+"""
+
+    parser = OptionParser( usage = usage )
+
+    parser.add_option( "-r", "--recursive",
+                      action = "store_true", dest = "recursive", default = False,
+                      help = "operate recursively" )
+
+#    parser.add_option( "-v", "--verbose",
+#                      action = "store_true", dest = "verbose", default = False,
+#                      help = "be verbose" )
+
+    ( options, args ) = parser.parse_args()
+
+    if not args:
+        print "ERROR: Command not provided"
+        parser.print_help()
+        sys.exit( -1 )
+
+    command = args[0]
+    args = args[1:]
+
+
+    command_func = imeta_rf_get
+    metaname = command
+    metavalue = None
+    if command.startswith( "~" ):
+        command_func = imeta_rf_del
+        metaname = command[1:]
+    elif "=" in command:
+        command_func = imeta_rf_set
+        metaname, metavalue = command.split( "=", 1 )
+
+    if not args: args = ['.']
+    icwd = guess_icwd()
+
+    collections = iargw( args, icwd )
+
+    for collection in collections:
+
+        # iquest doesn't support relative paths
+        if isrel( collection ):
+            collection = os.path.normpath( icwd + '/' + collection )
+
+        command_func( collection, metaname, metavalue, recursive = options.recursive )
