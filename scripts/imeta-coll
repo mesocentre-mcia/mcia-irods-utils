@@ -60,7 +60,6 @@ if __name__ == "__main__":
     from optparse import OptionParser
 
     usage = """\
-usage: %prog --report
 usage: %prog [options] [command] [collection]...
 
 Manage collection metadata
