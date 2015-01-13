@@ -7,20 +7,19 @@ from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
 from mcia_irods_utils import iquest_collection_metadata
 
-def replicas_failed_filter( replicas, filters ):
-    "filter replica statuses that fail each condition in filters list"
+def replicas_failed_filter( replicas, filter_ ):
+    "filter replica statuses that fail a condition"
 
     failed = replicas.items()
 
-    for filter_ in filters:
-        def _failed_filter( e ):
-            return not filter_( e )
+    def _failed_filter( e ):
+        return not filter_( e )
 
     failed = filter( _failed_filter, failed )
 
     return failed
 
-_irepl = IrodsCommand("irepl")
+_irepl = IrodsCommand( "irepl" )
 _itrim = IrodsCommand( "itrim" )
 def _dry_run_irepl( cmdlist ):
     print "DRY RUN: irepl " + " ".join( cmdlist )
@@ -30,10 +29,12 @@ def _dry_run_itrim( cmdlist ):
     return 0, None
 
 
-def repair_replicas_number( path, min_, max_, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
+def repair_replicas_number( path, condition, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
                             admin = False ):
-    "issues actions to fix replica numbers according to min_/max_ target or metadata_dict specification"
+    "issues actions to fix replica numbers according to constraint"
 
+    min_ = condition.min( path )
+    max_ = condition.max( path )
 
     irepl = _irepl
     itrim = _itrim
@@ -149,6 +150,120 @@ def load_collection_metadata_dict( collection, metaname, recursive ):
 
     return ret
 
+class ReplicaNumConstraint:
+    def __call__( self, e ):
+        raise NotImplementedError
+
+    def min( self, path ):
+        raise NotImplementedError
+
+    def max( self, path ):
+        raise NotImplementedError
+
+class MinConstraint(ReplicaNumConstraint):
+    def __init__( self, replnum ):
+        self.replnum = replnum
+    def __call__( self, e ):
+        return e[1] >= self.replnum
+
+    def min( self, path ):
+        return self.replnum
+
+    def max( self, path ):
+        return sys.maxint
+
+class MaxConstraint(ReplicaNumConstraint):
+    def __init__( self, replnum ):
+        self.replnum = replnum
+    def __call__( self, e ):
+        return e[1] <= self.replnum
+
+    def min( self, path ):
+        return 0
+
+    def max( self, path ):
+        return self.replnum
+
+class ExactConstraint( ReplicaNumConstraint ):
+    def __init__( self, replnum ):
+        self.replnum = replnum
+    def __call__( self, e ):
+        return e[1] == self.replnum
+
+    def min( self, path ):
+        return self.replnum
+
+    def max( self, path ):
+        return self.replnum
+
+class RangeConstraint( ReplicaNumConstraint ):
+    def __init__( self, min_, max_ ):
+        self.min_ = min_
+        self.max_ = max_
+
+    def __call__( self, e ):
+        return e[1] <= self.max_ and e[1] >= self.min_
+
+    def min( self, path ):
+        return self.min_
+
+    def max( self, path ):
+        return self.max_
+
+class MetadataConstraint( ReplicaNumConstraint ):
+    def __init__( self, metadata_dict, fallback ):
+        self.metadata_dict = metadata_dict
+        self.fallback = fallback
+
+    def __call__( self, e ):
+        coll = os.path.dirname( e[0] )
+        if coll not in self.metadata_dict:
+            if self.fallback is not None:
+                return self.fallback( e )
+            return True
+        return e[1] == self.metadata_dict[coll]
+
+    def min( self, path ):
+        coll = os.path.dirname( path )
+        if coll not in self.metadata_dict:
+            if self.fallback is not None:
+                return self.fallback.min( path )
+            return 0
+        return self.metadata_dict[coll]
+
+
+    def max( self, path ):
+        coll = os.path.dirname( path )
+        if coll not in self.metadata_dict:
+            if self.fallback is not None:
+                return self.fallback.max( path )
+            return sys.maxint
+        return self.metadata_dict[coll]
+
+class ORedListConstraint( ReplicaNumConstraint ):
+    def __init__( self, constraints = None ):
+        self.constraints = constraints or []
+
+    def __call__( self, e ):
+        for constraint in self.constraints:
+            if constraint( e ): return True
+
+        return False
+
+    def min( self, path ):
+        min_ = sys.maxint
+        for constraint in self.constraints:
+            min_ = min ( min_, constraint.min( path ) )
+
+        return min_
+
+    def max( self, path ):
+        max_ = 0
+        for constraint in self.constraints:
+            max_ = max ( max_, constraint.min( path ) )
+
+        return max_
+
 def parse_condition( arg, collection, recursive ):
     condition = None
     fallback = None
@@ -160,38 +275,36 @@ def parse_condition( arg, collection, recursive ):
 
     if arg.endswith( ':' ):
         replnum = int ( arg[:-1] )
-        condition = lambda e: e[1] >= replnum
-        min_ = replnum
+        return MinConstraint( replnum )
     elif arg.startswith( ':' ):
         replnum = int ( arg[1:] )
-        condition = lambda e: e[1] <= replnum
-        max_ = replnum
+        return MaxConstraint( replnum )
     elif ':' in arg:
         m, M = [int( e ) for e in arg.split( ':' )]
-        condition = lambda e: e[1] >= m and e[1] <= M
-        min_ = m
-        max_ = M
+        return RangeConstraint( m, M )
     else:
         try:
             replnum = int ( arg )
-            condition = lambda e: e[1] == replnum
-            min_ = replnum
-            max_ = replnum
+            return ExactConstraint( replnum )
         except ValueError:
             meta = arg
 
             metadata_dict = load_collection_metadata_dict( collection, meta, recursive )
-            def check( e ):
-                coll = os.path.dirname( e[0] )
-                if coll not in metadata_dict:
-                    if fallback is not None:
-                        return fallback( e )
-                    return True
-                return e[1] == metadata_dict[coll]
-            condition = check
+            return MetadataConstraint( metadata_dict, fallback )
 
-    return condition 
+    return None
 
+def parse_condition_list( args, collection, recursive ):
+    conditions = []
+
+    if not args: return None
+
+    for arg in args:
+        conditions.append( parse_condition( arg, collection, recursive ) )
+
+    if len( conditions ) == 1: return conditions[0]
+
+    return ORedListConstraint( conditions )
 
 if __name__ == "__main__":
     import sys
@@ -259,24 +372,15 @@ Notes:
 
     (options, args) = parser.parse_args()
 
-    condition = None
-    min_ = 0
-    max_ = sys.maxint
-    metadata_dict = None
-
     collection = options.collection
 
     if isrel( collection ):
         icwd = guess_icwd()
         collection = os.path.normpath( icwd + '/' + collection )
 
-    conditions = []
-    for arg in args:
-        condition = parse_condition( arg, collection, options.recursive )
+    condition = parse_condition_list( args, collection, options.recursive )
 
-        conditions.append( condition )
-
-    if not conditions: sys.exit( 0 )
+    if not condition: sys.exit( 0 )
 
     if options.verbose:
         print "Check collection:", collection
@@ -301,7 +405,7 @@ Notes:
         # replace replica numbers by resource group replica numbers
         for k, v in group_replicas.iteritems(): replicas[k] = v
 
-    failed = replicas_failed_filter( replicas, conditions )
+    failed = replicas_failed_filter( replicas, condition )
 
     if options.verbose:
         if failed: print "\n".join( ["Failed: \"%s\" has %d replicas" % f for f in failed] )
@@ -311,19 +415,9 @@ Notes:
 
     if options.repair and failed:
         if options.verbose: print "Begin repair"
-        if max_ <= 0:
-            print "WARNING: cannot repair with maximum replica number below 1"
-            sys.exit( 0 )
         r_list = get_resc_list()
         for f in failed:
-            mmin = min_
-            mmax = max_
 
-            coll = os.path.dirname( path )
-            if metadata_dict and coll in metadata_dict:
-                mmin = max( mmin, metadata_dict[coll] )
-                mmax = min( mmax, metadata_dict[coll], 1 )
-
-            repair_replicas_number( f[0], mmin, mmax, r_list, metadata_dict = metadata_dict, dry_run = options.dry_run,
+            repair_replicas_number( f[0], condition, r_list, dry_run = options.dry_run,
                                     verbose = options.verbose, resource_group_replicas = options.resource_group_replicas,
                                     admin = options.admin )
