@@ -1,5 +1,6 @@
 # -*- python -*-
 
+import shlex
 import os.path
 
 from icommand import IrodsCommand
@@ -15,14 +16,14 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
         if "CAT_NO_ROWS_FOUND" in e: return {}
         ret = {}
 
-        for l in e.split():
-            path, replnum = l.split(':')
+        for l in shlex.split( e ):
+            path, replnum = l.rsplit( ':', 1 )
             if path not in ret: ret[path] = 0
             ret[path] += int(replnum)
 
         return ret
 
-    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
+    iquest = IrodsCommand( "iquest", ["--no-page", "no-distinct", "'%s/%s':'%s'"],
                           output_filter = iquest_filter, verbose = False )
 
     condition1_list = ["COLL_NAME = '%s'" % path]
@@ -76,7 +77,7 @@ def file_replicas( path, resource_group_replicas = True ):
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
                           output_filter = iquest_filter, verbose = False)
 
-    retcode, replicas = iquest( ["select %s, order_asc(DATA_REPL_NUM) where COLL_NAME = '%s' and DATA_NAME = '%s'" % ( ( resc_column, ) + os.path.split( path ) )] )
+    _retcode, replicas = iquest( ["select %s, order_asc(DATA_REPL_NUM) where COLL_NAME = '%s' and DATA_NAME = '%s'" % ( ( resc_column, ) + os.path.split( path ) )] )
 
     # FIXME: check return code
 

@@ -60,7 +60,7 @@ def guess_icwd():
 
     if not icwd:
         ipwd = IrodsCommand("ipwd", output_filter = string.strip)
-        retcode, icwd = ipwd()
+        _retcode, icwd = ipwd()
 
     return icwd
 
