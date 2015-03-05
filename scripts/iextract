@@ -23,7 +23,7 @@ def _iquest_fmt( fields ):
     return "\"" + " ".join( ["'%s'" for _x in fields] ) + "\""
 
 def _iquest_filter( e ):
-    if "CAT_NO_ROWS_FOUND" in e: return {}
+    if "CAT_NO_ROWS_FOUND" in e: return []
 
     rows = shlex.split( e.strip() )
 
@@ -33,7 +33,7 @@ def _iquest_filter( e ):
 
     return ret
 
-def iquest_system_md( path, fields ):
+def iquest_recursive_collection( path, fields ):
 
     fmt = _iquest_fmt( fields )
 
@@ -72,7 +72,7 @@ def data_system_md( path ):
       "DATA_MODIFY_TIME",
     ]
 
-    return iquest_system_md( path, file_fields )
+    return iquest_recursive_collection( path, file_fields )
 
 def coll_system_md( path ):
 
@@ -85,7 +85,7 @@ def coll_system_md( path ):
         "COLL_INHERITANCE",
     ]
 
-    return iquest_system_md( path, coll_fields )
+    return iquest_recursive_collection( path, coll_fields )
 
 def data_acls( path, users ):
 
@@ -97,7 +97,7 @@ def data_acls( path, users ):
         "DATA_ACCESS_USER_ID",
     ]
 
-    fields, base = iquest_system_md( path, file_fields )
+    fields, base = iquest_recursive_collection( path, file_fields )
 
     for r in base:
       r[-1] = users[r[-1]]
@@ -114,7 +114,7 @@ def coll_acls( path, users ):
         "COLL_ACCESS_USER_ID",
     ]
 
-    fields, base = iquest_system_md( path, coll_fields )
+    fields, base = iquest_recursive_collection( path, coll_fields )
 
     for r in base:
       r[-1] = users[r[-1]]
@@ -146,6 +146,30 @@ def user_db():
 
     return ret
 
+def data_user_md( path ):
+
+    file_fields = [
+      "COLL_NAME",
+      "DATA_NAME",
+      "META_DATA_ATTR_NAME",
+      "META_DATA_ATTR_VALUE",
+      "META_DATA_ATTR_UNITS",
+    ]
+
+    return iquest_recursive_collection( path, file_fields )
+
+def coll_user_md( path ):
+
+    coll_fields = [
+        "COLL_NAME",
+        "META_COLL_ATTR_NAME",
+        "META_COLL_ATTR_VALUE",
+        "META_COLL_ATTR_UNITS",
+    ]
+
+    return iquest_recursive_collection( path, coll_fields )
+
+
 if __name__ == "__main__":
     import os.path
 
@@ -167,6 +191,9 @@ extract data and metadata out of iRODS
     parser.add_option( "--no-acls",
                       action = "store_false", dest = "acls", default = True,
                       help = "do not gather ACLs" )
+    parser.add_option( "--no-user-md",
+                      action = "store_false", dest = "user_md", default = True,
+                      help = "do not gather user metadata" )
 
 
     ( options, args ) = parser.parse_args()
@@ -206,4 +233,10 @@ extract data and metadata out of iRODS
             fields, base = data_acls( collection, users )
             print_csv( fields, base )
             fields, base = coll_acls( collection, users )
+            print_csv( fields, base )
+
+        if options.user_md:
+            fields, base = data_user_md( collection )
+            print_csv( fields, base )
+            fields, base = coll_user_md( collection )
             print_csv( fields, base )
