@@ -6,6 +6,7 @@ import random
 from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
 from mcia_irods_utils import iquest_collection_metadata
+from mcia_irods_utils import iquest_iscollection
 
 def replicas_failed_filter( replicas, filter_ ):
     "filter replica statuses that fail a condition"
@@ -392,6 +393,11 @@ Notes:
 
     replicas = iquest_replicas( collection, user = user,
                                recursive = options.recursive)
+
+    # check if collection exists in case of empty result
+    if len( replicas ) == 0 and not iquest_iscollection( collection ):
+        print "Error: collection \"%s\" not found" % collection
+        sys.exit(-1)
 
     if options.resource:
         group_replicas = iquest_replicas(collection, user = guess_user(),
