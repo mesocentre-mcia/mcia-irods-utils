@@ -42,3 +42,7 @@ Some iRODS iCommands have been wrapped to allow server-side wildcards to be used
 ## Metadata
 
 * `imeta-coll` - manage metadata on collections, eventually recursively
+
+## Data extraction
+
+* `iextract` - extract data and metadata from iRODS, for backup or migration
