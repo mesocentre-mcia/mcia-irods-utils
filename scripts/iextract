@@ -13,11 +13,11 @@ def irsync_collection( irodsCollection, localCollection ):
 
     return retcode, output
 
-def print_csv( headers, rows ):
-  print ",".join(headers)
+def save_csv( headers, rows, outfile = sys.stdout ):
+    outfile.write( ",".join( headers ) + "\n" )
   
-  for r in rows:
-    print ",".join( ["'%s'" % x for x in r] )
+    for r in rows:
+        outfile.write( ",".join( ["'%s'" % x for x in r] ) + "\n" )
 
 def _iquest_fmt( fields ):
     return "\"" + " ".join( ["'%s'" for _x in fields] ) + "\""
@@ -225,18 +225,24 @@ extract data and metadata out of iRODS
 
         if options.system_md:
             fields, base = data_system_md( collection )
-            print_csv( fields, base )
+            with open( collname + ".data-system-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
             fields, base = coll_system_md( collection )
-            print_csv( fields, base )
+            with open( collname + ".collection-system-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
 
         if options.acls:
             fields, base = data_acls( collection, users )
-            print_csv( fields, base )
+            with open( collname + ".data-acls.csv", "w" ) as f:
+                save_csv( fields, base, f )
             fields, base = coll_acls( collection, users )
-            print_csv( fields, base )
+            with open( collname + ".collection-acls.csv", "w" ) as f:
+                save_csv( fields, base, f )
 
         if options.user_md:
             fields, base = data_user_md( collection )
-            print_csv( fields, base )
+            with open( collname + ".data-user-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
             fields, base = coll_user_md( collection )
-            print_csv( fields, base )
+            with open( collname + ".collection-user-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
