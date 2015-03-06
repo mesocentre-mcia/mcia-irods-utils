@@ -185,15 +185,18 @@ extract data and metadata out of iRODS
     parser.add_option( "--no-rsync",
                       action = "store_false", dest = "rsync", default = True,
                       help = "do not synchronize local directory" )
-    parser.add_option( "--no-system-md",
-                      action = "store_false", dest = "system_md", default = True,
-                      help = "do not gather system metadata" )
-    parser.add_option( "--no-acls",
-                      action = "store_false", dest = "acls", default = True,
-                      help = "do not gather ACLs" )
-    parser.add_option( "--no-user-md",
-                      action = "store_false", dest = "user_md", default = True,
-                      help = "do not gather user metadata" )
+    parser.add_option( "--system-md",
+                      action = "store_true", dest = "system_md", default = False,
+                      help = "gather system metadata" )
+    parser.add_option( "--acls",
+                      action = "store_true", dest = "acls", default = False,
+                      help = "gather ACLs" )
+    parser.add_option( "--user-md",
+                      action = "store_true", dest = "user_md", default = False,
+                      help = "gather user metadata" )
+    parser.add_option( "-a", "--all-md",
+                      action = "store_true", dest = "all_md", default = False,
+                      help = "gather all available metadata" )
 
 
     ( options, args ) = parser.parse_args()
@@ -223,7 +226,7 @@ extract data and metadata out of iRODS
             if retcode != 0:
                 print "irsync error (%d):" % retcode, output
 
-        if options.system_md:
+        if options.system_md or options.all_md:
             fields, base = data_system_md( collection )
             with open( collname + ".data-system-md.csv", "w" ) as f:
                 save_csv( fields, base, f )
@@ -231,7 +234,7 @@ extract data and metadata out of iRODS
             with open( collname + ".collection-system-md.csv", "w" ) as f:
                 save_csv( fields, base, f )
 
-        if options.acls:
+        if options.acls or options.all_md:
             fields, base = data_acls( collection, users )
             with open( collname + ".data-acls.csv", "w" ) as f:
                 save_csv( fields, base, f )
@@ -239,7 +242,7 @@ extract data and metadata out of iRODS
             with open( collname + ".collection-acls.csv", "w" ) as f:
                 save_csv( fields, base, f )
 
-        if options.user_md:
+        if options.user_md or options.all_md:
             fields, base = data_user_md( collection )
             with open( collname + ".data-user-md.csv", "w" ) as f:
                 save_csv( fields, base, f )
