@@ -3,7 +3,7 @@
 import glob
 from distutils.core import setup
 
-scripts = glob.glob( "scripts/i*" ) + glob.glob( 'icmdw/i*' )
+scripts = glob.glob( "scripts/i*" )
 
 setup( name = 'mcia-irods-utils',
        version = '0.3',
