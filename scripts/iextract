@@ -1,0 +1,256 @@
+#! /usr/bin/env python
+
+import sys
+import shlex
+
+from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
+
+def irsync_collection( irodsCollection, localCollection ):
+    irsync = IrodsCommand( "irsync", ["-r"], verbose = False )
+
+
+    retcode, output = irsync( ["i:%s" % irodsCollection, localCollection] )
+
+    return retcode, output
+
+def save_csv( headers, rows, outfile = sys.stdout ):
+    outfile.write( ",".join( headers ) + "\n" )
+  
+    for r in rows:
+        outfile.write( ",".join( ["'%s'" % x for x in r] ) + "\n" )
+
+def _iquest_fmt( fields ):
+    return "\"" + " ".join( ["'%s'" for _x in fields] ) + "\""
+
+def _iquest_filter( e ):
+    if "CAT_NO_ROWS_FOUND" in e: return []
+
+    rows = shlex.split( e.strip() )
+
+    ret = []
+    for row in rows:
+        ret.append( shlex.split( row ) )
+
+    return ret
+
+def iquest_recursive_collection( path, fields ):
+
+    fmt = _iquest_fmt( fields )
+
+    iquest = IrodsCommand( "iquest", ["--no-page", fmt],
+                          output_filter = _iquest_filter, verbose = False )
+
+    select = "select " + ",".join( fields )
+    where_local = "where COLL_NAME = '%s'" % path
+    where_recursive = "where COLL_NAME like '%s/%%'" % path
+
+    retcode, output = iquest( [' '.join ( [select, where_local] )] )
+    if retcode != 0: raise Exception( "Error: iquest retruned non-zero status %d. Output follows:%s" % ( retcode, output ) )
+    local_base = output
+
+    retcode, output = iquest( [' '.join ( [select, where_recursive] )] )
+    if retcode != 0: raise Exception( "Error: iquest retruned non-zero status %d. Output follows:%s" % ( retcode, output ) )
+    recursive_base = output
+
+    base = local_base + recursive_base
+
+    return fields, base
+
+def data_system_md( path ):
+
+    file_fields = [
+      "COLL_NAME",
+      "DATA_NAME",
+      "DATA_TYPE_NAME",
+      "DATA_REPL_NUM",
+      "DATA_OWNER_NAME",
+      "DATA_OWNER_ZONE",
+      "DATA_RESC_GROUP_NAME",
+      "DATA_RESC_NAME",
+      "DATA_CHECKSUM",
+      "DATA_CREATE_TIME",
+      "DATA_MODIFY_TIME",
+    ]
+
+    return iquest_recursive_collection( path, file_fields )
+
+def coll_system_md( path ):
+
+    coll_fields = [
+        "COLL_NAME",
+        "COLL_OWNER_NAME",
+        "COLL_OWNER_ZONE",
+        "COLL_CREATE_TIME",
+        "COLL_MODIFY_TIME",
+        "COLL_INHERITANCE",
+    ]
+
+    return iquest_recursive_collection( path, coll_fields )
+
+def data_acls( path, users ):
+
+    file_fields = [
+        "COLL_NAME",
+        "DATA_NAME",
+        "DATA_ACCESS_TYPE",
+        "DATA_ACCESS_NAME",
+        "DATA_ACCESS_USER_ID",
+    ]
+
+    fields, base = iquest_recursive_collection( path, file_fields )
+
+    for r in base:
+      r[-1] = users[r[-1]]
+
+    return fields, base
+
+
+def coll_acls( path, users ):
+
+    coll_fields = [
+        "COLL_NAME",
+        "COLL_ACCESS_TYPE",
+        "COLL_ACCESS_NAME",
+        "COLL_ACCESS_USER_ID",
+    ]
+
+    fields, base = iquest_recursive_collection( path, coll_fields )
+
+    for r in base:
+      r[-1] = users[r[-1]]
+
+    return fields, base
+
+def user_db():
+    fields = [
+        "USER_ID",
+        "USER_NAME",
+        "USER_TYPE",
+        "USER_ZONE",
+    ]
+
+    fmt = _iquest_fmt( fields )
+
+    iquest = IrodsCommand( "iquest", ["--no-page", fmt],
+                          output_filter = _iquest_filter, verbose = False )
+
+
+    retcode, output = iquest( ["select " + ','.join ( fields )] )
+    if retcode != 0: raise Exception( "Error: iquest retruned non-zero status %d. Output follows:%s" % ( retcode, output ) )
+    rows = output
+
+    ret = {}
+
+    for r in rows:
+      ret[r[0]] = r[1]
+
+    return ret
+
+def data_user_md( path ):
+
+    file_fields = [
+      "COLL_NAME",
+      "DATA_NAME",
+      "META_DATA_ATTR_NAME",
+      "META_DATA_ATTR_VALUE",
+      "META_DATA_ATTR_UNITS",
+    ]
+
+    return iquest_recursive_collection( path, file_fields )
+
+def coll_user_md( path ):
+
+    coll_fields = [
+        "COLL_NAME",
+        "META_COLL_ATTR_NAME",
+        "META_COLL_ATTR_VALUE",
+        "META_COLL_ATTR_UNITS",
+    ]
+
+    return iquest_recursive_collection( path, coll_fields )
+
+
+if __name__ == "__main__":
+    import os.path
+
+    from optparse import OptionParser
+
+    usage = """\
+usage: %prog [options] COLLECTION...
+
+extract data and metadata out of iRODS.
+
+Data are extracted through irsync inside a local directory named after COLLECTION basename.
+
+If metadata (system, acls or user) are required, they are stored in csv files also named after COLLECTION basename in
+the current working directory.
+"""
+
+    parser = OptionParser( usage = usage )
+    parser.add_option( "--no-rsync",
+                      action = "store_false", dest = "rsync", default = True,
+                      help = "do not synchronize local directory" )
+    parser.add_option( "--system-md",
+                      action = "store_true", dest = "system_md", default = False,
+                      help = "gather system metadata" )
+    parser.add_option( "--acls",
+                      action = "store_true", dest = "acls", default = False,
+                      help = "gather ACLs" )
+    parser.add_option( "--user-md",
+                      action = "store_true", dest = "user_md", default = False,
+                      help = "gather user metadata" )
+    parser.add_option( "-a", "--all-md",
+                      action = "store_true", dest = "all_md", default = False,
+                      help = "gather all available metadata" )
+
+
+    ( options, args ) = parser.parse_args()
+
+    if not args:
+        print "No collection argument provided.\n-------"
+        parser.print_help()
+        sys.exit( -1 )
+
+    icwd = guess_icwd()
+
+    collections = iargw( args, icwd )
+
+    users = user_db()
+
+    for collection in collections:
+
+        # iquest doesn't support relative paths
+        if isrel( collection ):
+            collection = os.path.normpath( icwd + '/' + collection )
+
+        collname = os.path.basename( collection )
+        print collection, collname
+
+        if options.rsync:
+            retcode, output = irsync_collection( collection, collname )
+            if retcode != 0:
+                print "irsync error (%d):" % retcode, output
+
+        if options.system_md or options.all_md:
+            fields, base = data_system_md( collection )
+            with open( collname + ".data-system-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
+            fields, base = coll_system_md( collection )
+            with open( collname + ".collection-system-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
+
+        if options.acls or options.all_md:
+            fields, base = data_acls( collection, users )
+            with open( collname + ".data-acls.csv", "w" ) as f:
+                save_csv( fields, base, f )
+            fields, base = coll_acls( collection, users )
+            with open( collname + ".collection-acls.csv", "w" ) as f:
+                save_csv( fields, base, f )
+
+        if options.user_md or options.all_md:
+            fields, base = data_user_md( collection )
+            with open( collname + ".data-user-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
+            fields, base = coll_user_md( collection )
+            with open( collname + ".collection-user-md.csv", "w" ) as f:
+                save_csv( fields, base, f )
