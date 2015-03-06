@@ -178,7 +178,12 @@ if __name__ == "__main__":
     usage = """\
 usage: %prog [options] COLLECTION...
 
-extract data and metadata out of iRODS
+extract data and metadata out of iRODS.
+
+Data are extracted through irsync inside a local directory named after COLLECTION basename.
+
+If metadata (system, acls or user) are required, they are stored in csv files also named after COLLECTION basename in
+the current working directory.
 """
 
     parser = OptionParser( usage = usage )
