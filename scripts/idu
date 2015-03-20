@@ -191,13 +191,17 @@ summary disk usage for each COLLECTION, recursively.
 
         base = iquest_du_base(collection)
 
-        if options.recursive:
-            base_include_subcollections(base)
-
         if not base:
             if not iquest_iscollection( collection ):
                 print "Error: \"%s\" not found" % collection
             continue
+
+        if collection not in base:
+            # insert empty record in "base" when "collection" is empty of data objects
+            base[collection] = 0
+
+        if options.recursive:
+            base_include_subcollections( base )
 
         base_convert(base, options.converter)
 
