@@ -4,6 +4,7 @@ import sys
 import math
 
 from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
+from mcia_irods_utils import iquest_iscollection
 
 def iquest_du_base(path):
     "gather collection disk usage stats"
@@ -193,7 +194,10 @@ summary disk usage for each COLLECTION, recursively.
         if options.recursive:
             base_include_subcollections(base)
 
-        if not base: continue
+        if not base:
+            if not iquest_iscollection( collection ):
+                print "Error: \"%s\" not found" % collection
+            continue
 
         base_convert(base, options.converter)
 
