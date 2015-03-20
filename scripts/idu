@@ -21,7 +21,7 @@ def iquest_du_base(path):
         return ret
 
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct"],
-                          output_filter = iquest_filter, verbose = False)
+                          output_filter = iquest_filter, verbose = False )
 
     select = "select sum(DATA_SIZE), COLL_NAME"
     where_local = "where COLL_NAME = '%s'" % path
@@ -29,11 +29,10 @@ def iquest_du_base(path):
 
     _retcode, local_base = iquest( ["%s:%s", ' '.join ( [select, where_local] )] )
 
-    if local_base:
-        select = "select sum(DATA_SIZE), COLL_NAME"
-        _retcode, recursive_base = iquest( ["%s:%s", ' '.join ( [select, where_recursive] )] )
-        local_base.update(recursive_base)
-    else:
+    _retcode, recursive_base = iquest( ["%s:%s", ' '.join ( [select, where_recursive] )] )
+    local_base.update( recursive_base )
+
+    if not local_base:
         # path may be a file
         select = "select sum(DATA_SIZE), COLL_NAME, DATA_NAME"
         where_file = "where COLL_NAME = '%s' and DATA_NAME = '%s'" % os.path.split(path)
