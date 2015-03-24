@@ -1,30 +1,39 @@
 # -*- python -*-
 
-import shlex
 import os.path
 
-from icommand import IrodsCommand
+from icommand import DirectOutputIrodsCommand
 
 def iquest_replicas( path, user = None, recursive = False, resource = None, resource_group_replicas = True ):
     "gather replica status dictionary"
+
+    def replica_dict( output ):
+        ret = {}
+
+        for pr in output:
+
+            if pr is None: continue
+
+            path, replnum = pr
+
+            if path not in ret: ret[path] = replnum
+            else: ret[path] += replnum
+
+        return ret
+
+    def iquest_filter(e):
+        if "CAT_NO_ROWS_FOUND" in e: return None
+
+        path, replnum = e.rsplit( ':', 1 )
+
+        return path, int( replnum )
 
     resc_column = "RESC_GROUP_NAME"
     if not resource_group_replicas:
         resc_column = "RESC_NAME"
 
-    def iquest_filter(e):
-        if "CAT_NO_ROWS_FOUND" in e: return {}
-        ret = {}
-
-        for l in shlex.split( e ):
-            path, replnum = l.rsplit( ':', 1 )
-            if path not in ret: ret[path] = 0
-            ret[path] += int(replnum)
-
-        return ret
-
-    iquest = IrodsCommand( "iquest", ["--no-page", "no-distinct", "'%s/%s':'%s'"],
-                          output_filter = iquest_filter, verbose = False )
+    iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
+                                       output_filter = iquest_filter, verbose = False )
 
     condition1_list = ["COLL_NAME = '%s'" % path]
     condition2_list = ["COLL_NAME like '%s/%%'" % path]
@@ -49,16 +58,14 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
 
     ret = {}
 
-    retcode, ret1 = iquest([select1])
+    output = iquest( [select1] )
 
-    if retcode == 0:
-        ret.update(ret1)
+    ret.update( replica_dict( output ) )
 
-        if recursive:
-            retcode, ret2 = iquest([select2])
+    if recursive:
+        output = iquest( [select2] )
 
-            if retcode == 0:
-                ret.update(ret2)
+        ret.update( replica_dict( output ) )
 
     return ret
 
