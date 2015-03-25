@@ -26,6 +26,26 @@ class IrodsCommand:
 
         return p.returncode, output
 
+class DirectOutputIrodsCommand( IrodsCommand ):
+    "iRODS command wrapper that directly returns output lines from stdout"
+    def __call__( self, cmdline = [] ):
+        cmdlist = [self.cmd] + self.opts + cmdline
+
+        if self.verbose:
+            print "IrodsCommand:", " ".join( [self.cmd] + self.opts + [repr( e ) for e in cmdline] )
+
+        stdout = os.tmpfile()
+        p = subprocess.Popen( cmdlist, stdout = stdout, stderr = subprocess.STDOUT )
+
+        p.wait()
+
+        if p.returncode != 0: raise subprocess.CalledProcessError
+
+        stdout.seek( 0 )
+
+        for l in stdout:
+            yield self.output_filter( l )
+
 def parse_env(path):
     "parse iRODS iCommands environment files"
 

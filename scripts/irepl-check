@@ -399,6 +399,9 @@ Notes:
         print "Error: collection \"%s\" not found" % collection
         sys.exit(-1)
 
+    if options.verbose:
+        print "Checking %d files" % len( replicas )
+
     if options.resource:
         group_replicas = iquest_replicas(collection, user = guess_user(),
                                          recursive = options.recursive,
