@@ -47,7 +47,7 @@ def base_include_subcollections(base):
 
     for i, parent in enumerate(colls):
         for subcollection in colls[i+1:]:
-            if parent not in subcollection: break
+            if not subcollection.startswith( parent + "/" ): break
 
             base[parent] += base[subcollection]
 
