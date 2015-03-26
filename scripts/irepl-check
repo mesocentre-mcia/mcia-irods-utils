@@ -7,6 +7,7 @@ from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
 from mcia_irods_utils import iquest_collection_metadata
 from mcia_irods_utils import iquest_iscollection
+from mcia_irods_utils.icommand import DirectOutputIrodsCommand
 
 def replicas_failed_filter( replicas, filter_ ):
     "filter replica statuses that fail a condition"
@@ -346,6 +347,93 @@ def do_irepl_check( collection, condition, user, recursive, verbose, resource,
 
     return len( replicas )
 
+def _path_cmp( a, b ):
+    # path comparison function: replace '/' in order it takes precedence over all characters
+    return cmp( a.replace( '/', chr( 0 ) ), b.replace( '/', chr( 0 ) ) )
+
+def base_include_subcollections( base ):
+    colls = base.keys()
+    colls.sort( _path_cmp )
+
+    for i, parent in enumerate( colls ):
+        for subcollection in colls[i + 1:]:
+            if not subcollection.startswith( parent + "/" ): break
+
+            base[parent] += base[subcollection]
+
+def base_split_maxsize( base, maxsize ):
+    colls = base.keys()
+    colls.sort( _path_cmp )
+
+    ret = {}
+
+    i = 0
+    while i < len( colls ):
+        coll = colls[i]
+        size = base[coll]
+        ret[coll] = size
+        i += 1
+        if size < maxsize:
+            while i < len( colls ) and colls[i].startswith( coll + "/" ):
+                i += 1
+
+    return ret
+
+def base_split_recursive( base ):
+    colls = base.keys()
+    colls.sort( _path_cmp )
+
+    leaves = []
+    spines = []
+
+    for i, parent in enumerate( colls ):
+        leaf = True
+        if ( i + 1 ) < len( colls ) and colls[i + 1].startswith( parent + "/" ):
+            spines.append( parent )
+        else:
+            leaves.append( parent )
+
+    return leaves, spines
+
+def collection_tree(collection, user):
+    def iquest_filter( row ):
+        if "CAT_NO_ROWS_FOUND" in row: return None
+
+        coll, replicas = row.strip().rsplit( ":", 1 )
+
+        return coll, int( replicas )
+
+    iquest = DirectOutputIrodsCommand( "iquest", ["no-distinct", "--no-page", "%s:%s"],
+                                       output_filter = iquest_filter, verbose = False )
+
+    ret = {collection : 0}
+
+    select_self = "select COLL_NAME, count(DATA_SIZE) where COLL_NAME = '%s'" % collection
+    select_recursive = "select COLL_NAME, count(DATA_REPL_NUM) where COLL_NAME like '%s/%%'" % collection
+
+    if user:
+        user_condition = " and DATA_OWNER_NAME = '%s'" % user
+        select_self += user_condition
+        select_recursive += user_condition
+
+    output = iquest( [select_self] )
+
+    for row in output:
+        if row is None: continue
+        coll, replicas = row
+        ret[coll] = replicas
+
+    output = iquest( [select_recursive] )
+
+    for row in output:
+        if row is None: continue
+        coll, replicas = row
+        ret[coll] = replicas
+
+    base_include_subcollections( ret )
+
+    return ret
+
 if __name__ == "__main__":
     import sys
     import os.path
@@ -409,6 +497,9 @@ Notes:
     parser.add_option( "-M", "--admin",
                       action = "store_true", dest = "admin", default = False,
                       help = "admin mode: admin user uses this option to check other users files" )
+    parser.add_option( "--large", metavar = "NREPL",
+                      type = "int", dest = "large", default = None,
+                      help = "split collection trees in several requests when number of replicas exceeds NREPL" )
 
     (options, args) = parser.parse_args()
 
@@ -435,7 +526,29 @@ Notes:
         print "Error: collection \"%s\" not found" % collection
         sys.exit(-1)
 
-    replica_number = do_irepl_check( collection, condition, user, options.recursive, options.verbose, options.resource,
+    if options.recursive and options.large is not None:
+        if options.verbose:
+            print "Large collection tree method. Splitting directories in several requests over %d replicas." % options.large
+
+        base = collection_tree( collection, user )
+
+        splitted = base_split_maxsize( base, options.large )
+
+        leaves, spines = base_split_recursive( splitted )
+
+        replica_number = 0
+        for leaf in leaves:
+            if options.verbose:
+                print "recursive request:", leaf, base[leaf]
+            replica_number += do_irepl_check( leaf, condition, user, True, options.verbose, options.resource,
+                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin )
+        for spine in spines:
+            if options.verbose:
+                print "non recursive request", spine, base[spine]
+            replica_number += do_irepl_check( spine, condition, user, False, options.verbose, options.resource,
+                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin )
+    else:
+        replica_number = do_irepl_check( collection, condition, user, options.recursive, options.verbose, options.resource,
                                      options.resource_group_replicas, options.repair, options.dry_run, options.admin )
 
     if options.verbose:
