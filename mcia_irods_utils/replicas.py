@@ -2,7 +2,7 @@
 
 import os.path
 
-from icommand import DirectOutputIrodsCommand
+from icommand import DirectOutputIrodsCommand, IrodsCommand
 
 def iquest_replicas( path, user = None, recursive = False, resource = None, resource_group_replicas = True ):
     "gather replica status dictionary"
