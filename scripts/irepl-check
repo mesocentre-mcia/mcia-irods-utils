@@ -307,6 +307,45 @@ def parse_condition_list( args, collection, recursive ):
 
     return ORedListConstraint( conditions )
 
+def do_irepl_check( collection, condition, user, recursive, verbose, resource,
+                    resource_group_replicas, repair, dry_run, admin ):
+    replicas = iquest_replicas( collection, user = user,
+                                recursive = recursive )
+
+    if resource:
+        group_replicas = iquest_replicas( collection, user = user,
+                                          recursive = recursive,
+                                          resource = resource,
+                                          resource_group_replicas = resource_group_replicas )
+
+        # zero all files replica numbers
+        for k in replicas: replicas[k] = 0
+
+        # replace replica numbers by resource group replica numbers
+        for k, v in group_replicas.iteritems(): replicas[k] = v
+
+    failed = replicas_failed_filter( replicas, condition )
+
+    failmsg = "%s : %s"
+    if verbose:
+        failmsg = "Failed: \"%s\" has %d replicas"
+
+    for f in failed:
+        print failmsg % f
+
+
+    if repair and failed:
+
+        r_list = get_resc_list()
+        for f in failed:
+
+            repair_replicas_number( f[0], condition, r_list, dry_run = dry_run,
+                                    verbose = verbose,
+                                    resource_group_replicas = resource_group_replicas,
+                                    admin = admin )
+
+    return len( replicas )
+
 if __name__ == "__main__":
     import sys
     import os.path
@@ -391,42 +430,13 @@ Notes:
     user = options.user
     if not ( user or options.admin ): user = guess_user()
 
-    replicas = iquest_replicas( collection, user = user,
-                               recursive = options.recursive)
-
     # check if collection exists in case of empty result
-    if len( replicas ) == 0 and not iquest_iscollection( collection ):
+    if not iquest_iscollection( collection ):
         print "Error: collection \"%s\" not found" % collection
         sys.exit(-1)
 
-    if options.verbose:
-        print "Checking %d files" % len( replicas )
-
-    if options.resource:
-        group_replicas = iquest_replicas(collection, user = guess_user(),
-                                         recursive = options.recursive,
-                                         resource = options.resource,
-                                         resource_group_replicas = options.resource_group_replicas )
-
-        # zero all files replica numbers
-        for k in replicas: replicas[k] = 0
-
-        # replace replica numbers by resource group replica numbers
-        for k, v in group_replicas.iteritems(): replicas[k] = v
-
-    failed = replicas_failed_filter( replicas, condition )
+    replica_number = do_irepl_check( collection, condition, user, options.recursive, options.verbose, options.resource,
+                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin )
 
     if options.verbose:
-        if failed: print "\n".join( ["Failed: \"%s\" has %d replicas" % f for f in failed] )
-        else: print "no file failed the check"
-    else:
-        if failed: print "\n".join( ["%s : %s" % f for f in failed] )
-
-    if options.repair and failed:
-        if options.verbose: print "Begin repair"
-        r_list = get_resc_list()
-        for f in failed:
-
-            repair_replicas_number( f[0], condition, r_list, dry_run = options.dry_run,
-                                    verbose = options.verbose, resource_group_replicas = options.resource_group_replicas,
-                                    admin = options.admin )
+        print "Checked %d files" % replica_number
