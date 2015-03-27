@@ -82,7 +82,7 @@ def repair_replicas_number( path, condition, r_list, dry_run = False, verbose = 
                 rg_index = file_rescs.index(remove_rescs[i])
                 rg, repl_id = file_repls[rg_index]
                 print path, ": remove replica #%s (%s)" % (repl_id, rg)
-                retcode, output = itrim( opts + ["-n", repl_id, path] )
+                retcode, output = itrim( opts + ["-n", repl_id, "-N", str( max_ ), path] )
                 if retcode != 0:
                     print "ERROR:", output
 
