@@ -41,9 +41,13 @@ def iquest_du_base(path):
 
     return local_base
 
+def _path_cmp( a, b ):
+    # path comparison function: replace '/' in order it takes precedence over all characters
+    return cmp( a.replace( '/', chr( 0 ) ), b.replace( '/', chr( 0 ) ) )
+
 def base_include_subcollections(base):
     colls = base.keys()
-    colls.sort()
+    colls.sort( _path_cmp )
 
     for i, parent in enumerate(colls):
         for subcollection in colls[i+1:]:
@@ -53,7 +57,7 @@ def base_include_subcollections(base):
 
 def base_print(base, maxslashes = sys.maxint):
     colls = base.keys()
-    colls.sort(reverse = True)
+    colls.sort( _path_cmp, reverse = True )
 
     maxsize = max([len(str(s)) for s in base.values()])
 
