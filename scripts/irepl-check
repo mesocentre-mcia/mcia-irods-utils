@@ -2,6 +2,7 @@
 
 import re
 import random
+import os.path
 
 from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
@@ -387,7 +388,6 @@ def base_split_recursive( base ):
     spines = []
 
     for i, parent in enumerate( colls ):
-        leaf = True
         if ( i + 1 ) < len( colls ) and colls[i + 1].startswith( parent + "/" ):
             spines.append( parent )
         else:
@@ -429,6 +429,12 @@ def collection_tree(collection, user):
         if row is None: continue
         coll, replicas = row
         ret[coll] = replicas
+
+        parent = os.path.dirname( coll )
+        while parent != '/':
+            if parent not in ret:
+                ret[parent] = 0
+            parent = os.path.dirname( parent )
 
     base_include_subcollections( ret )
 
