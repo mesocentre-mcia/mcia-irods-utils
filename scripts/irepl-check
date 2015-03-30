@@ -358,40 +358,31 @@ def base_include_subcollections( base ):
 
     for i, parent in enumerate( colls ):
         for subcollection in colls[i + 1:]:
-            if not subcollection.startswith( parent + "/" ): break
-
-            base[parent] += base[subcollection]
+            if subcollection.startswith( parent + "/" ):
+                # update recursive replicas number from subcollection number
+                base[parent][1] += base[subcollection][1]
 
 def base_split_maxsize( base, maxsize ):
-    colls = base.keys()
-    colls.sort( _path_cmp )
-
-    ret = {}
-
-    i = 0
-    while i < len( colls ):
-        coll = colls[i]
-        size = base[coll]
-        ret[coll] = size
-        i += 1
-        if size < maxsize:
-            while i < len( colls ) and colls[i].startswith( coll + "/" ):
-                i += 1
-
-    return ret
-
-def base_split_recursive( base ):
     colls = base.keys()
     colls.sort( _path_cmp )
 
     leaves = []
     spines = []
 
-    for i, parent in enumerate( colls ):
-        if ( i + 1 ) < len( colls ) and colls[i + 1].startswith( parent + "/" ):
-            spines.append( parent )
+    i = 0
+    while i < len( colls ):
+        coll = colls[i]
+        size = base[coll][1]
+        i += 1
+        recursive = True
+        if size < maxsize:
+            while i < len( colls ) and colls[i].startswith( coll + "/" ):
+                i += 1
+                recursive = False
+        if recursive:
+            spines.append( coll )
         else:
-            leaves.append( parent )
+            leaves.append( coll )
 
     return leaves, spines
 
@@ -406,7 +397,7 @@ def collection_tree(collection, user):
     iquest = DirectOutputIrodsCommand( "iquest", ["no-distinct", "--no-page", "%s:%s"],
                                        output_filter = iquest_filter, verbose = False )
 
-    ret = {collection : 0}
+    ret = {collection : [0, 0]}
 
     select_self = "select COLL_NAME, count(DATA_SIZE) where COLL_NAME = '%s'" % collection
     select_recursive = "select COLL_NAME, count(DATA_REPL_NUM) where COLL_NAME like '%s/%%'" % collection
@@ -421,19 +412,21 @@ def collection_tree(collection, user):
     for row in output:
         if row is None: continue
         coll, replicas = row
-        ret[coll] = replicas
+        ret[coll] = [replicas, replicas] # [self-replicas, recursive-replicas]
 
     output = iquest( [select_recursive] )
 
     for row in output:
         if row is None: continue
         coll, replicas = row
-        ret[coll] = replicas
+        ret[coll] = [replicas, replicas] # [self-replicas, recursive-replicas]
 
+
+    for coll in ret.keys():
         parent = os.path.dirname( coll )
-        while parent != '/':
+        while parent > collection:
             if parent not in ret:
-                ret[parent] = 0
+                ret[parent] = [0, 0]
             parent = os.path.dirname( parent )
 
     base_include_subcollections( ret )
@@ -538,9 +531,7 @@ Notes:
 
         base = collection_tree( collection, user )
 
-        splitted = base_split_maxsize( base, options.large )
-
-        leaves, spines = base_split_recursive( splitted )
+        leaves, spines = base_split_maxsize( base, options.large )
 
         replica_number = 0
         for leaf in leaves:
@@ -549,6 +540,7 @@ Notes:
             replica_number += do_irepl_check( leaf, condition, user, True, options.verbose, options.resource,
                                      options.resource_group_replicas, options.repair, options.dry_run, options.admin )
         for spine in spines:
+            if base[spine][0] == 0: continue # don't check for spines with no local files
             if options.verbose:
                 print "non recursive request", spine, base[spine]
             replica_number += do_irepl_check( spine, condition, user, False, options.verbose, options.resource,
