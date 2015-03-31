@@ -108,7 +108,7 @@ class DictUnitConverter(UnitConverter):
 
     def __call__(self, value):
         if value == 0:
-            return "%d" + self.dict[0]
+            return "0" + self.dict[0]
 
         logvalue = min(int(math.log(value)/math.log(self.base)), self.maxkey)
 
@@ -198,7 +198,7 @@ summary disk usage for each COLLECTION, recursively.
         if not base:
             if not iquest_iscollection( collection ):
                 print "Error: \"%s\" not found" % collection
-            continue
+                continue
 
         if collection not in base:
             # insert empty record in "base" when "collection" is empty of data objects
