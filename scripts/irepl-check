@@ -3,6 +3,7 @@
 import re
 import random
 import os.path
+import datetime
 
 from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
 from mcia_irods_utils import iquest_replicas, file_replicas
@@ -10,15 +11,21 @@ from mcia_irods_utils import iquest_collection_metadata
 from mcia_irods_utils import iquest_iscollection
 from mcia_irods_utils.icommand import DirectOutputIrodsCommand
 
-def replicas_failed_filter( replicas, filter_ ):
+def replicas_failed_filter( replicas, filter_, date = False ):
     "filter replica statuses that fail a condition"
 
     failed = replicas.items()
 
-    def _failed_filter( e ):
-        return not filter_( e )
+    def _failed_filter_date( e ):
+        return not filter_( ( e[0], e[1][0] ) )
 
-    failed = filter( _failed_filter, failed )
+    def _failed_filter_no_date( e ):
+        return not filter_( ( e[0], e[1] ) )
+
+    ff = _failed_filter_no_date
+    if date: ff = _failed_filter_date
+
+    failed = filter( ff, failed )
 
     return failed
 
@@ -310,31 +317,46 @@ def parse_condition_list( args, collection, recursive ):
     return ORedListConstraint( conditions )
 
 def do_irepl_check( collection, condition, user, recursive, verbose, resource,
-                    resource_group_replicas, repair, dry_run, admin ):
+                    resource_group_replicas, repair, dry_run, admin, grace_date = None ):
+
+    date = grace_date is not None
     replicas = iquest_replicas( collection, user = user,
-                                recursive = recursive )
+                                recursive = recursive,
+                                date = date )
 
     if resource:
         group_replicas = iquest_replicas( collection, user = user,
                                           recursive = recursive,
                                           resource = resource,
-                                          resource_group_replicas = resource_group_replicas )
+                                          resource_group_replicas = resource_group_replicas,
+                                          date = date )
 
         # zero all files replica numbers
-        for k in replicas: replicas[k] = 0
+        if date:
+            for k in replicas: replicas[k][0] = 0
+        else:
+            for k in replicas: replicas[k] = 0
 
         # replace replica numbers by resource group replica numbers
         for k, v in group_replicas.iteritems(): replicas[k] = v
 
-    failed = replicas_failed_filter( replicas, condition )
+    failed = replicas_failed_filter( replicas, condition, date )
 
     failmsg = "%s : %s"
     if verbose:
         failmsg = "Failed: \"%s\" has %d replicas"
 
-    for f in failed:
-        print failmsg % f
-
+    if date:
+        grace_failed = []
+        for f in failed:
+            d = datetime.datetime.fromtimestamp( f[1][1] )
+            if d < grace_date:
+                grace_failed.append( f )
+                print failmsg % ( f[0], f[1][0] )
+        failed = grace_failed
+    else:
+        for f in failed:
+            print failmsg % ( f[0], f[1] )
 
     if repair and failed:
 
@@ -500,6 +522,10 @@ Notes:
                       type = "int", dest = "large", default = None,
                       help = "split collection trees in several requests when number of replicas exceeds NREPL" )
 
+    parser.add_option( "--grace-period", metavar = "DAYS",
+                      type = "int", dest = "grace", default = None,
+                      help = "don't mark newer than DAYS as failed" )
+
     (options, args) = parser.parse_args()
 
     collection = options.collection
@@ -520,6 +546,12 @@ Notes:
     user = options.user
     if not ( user or options.admin ): user = guess_user()
 
+    grace_date = None
+    if options.grace:
+        grace_date = datetime.datetime.now() - datetime.timedelta( days = options.grace )
+        if options.verbose:
+            print "Grace period: %d days (date=%s)" % ( options.grace, grace_date )
+
     # check if collection exists in case of empty result
     if not iquest_iscollection( collection ):
         print "Error: collection \"%s\" not found" % collection
@@ -538,16 +570,19 @@ Notes:
             if options.verbose:
                 print "recursive request:", leaf, base[leaf]
             replica_number += do_irepl_check( leaf, condition, user, True, options.verbose, options.resource,
-                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin )
+                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin,
+                                     grace_date )
         for spine in spines:
             if base[spine][0] == 0: continue # don't check for spines with no local files
             if options.verbose:
                 print "non recursive request", spine, base[spine]
             replica_number += do_irepl_check( spine, condition, user, False, options.verbose, options.resource,
-                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin )
+                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin,
+                                     grace_date )
     else:
         replica_number = do_irepl_check( collection, condition, user, options.recursive, options.verbose, options.resource,
-                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin )
+                                     options.resource_group_replicas, options.repair, options.dry_run, options.admin,
+                                     grace_date )
 
     if options.verbose:
         print "Checked %d files" % replica_number

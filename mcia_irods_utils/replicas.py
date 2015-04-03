@@ -4,7 +4,8 @@ import os.path
 
 from icommand import DirectOutputIrodsCommand, IrodsCommand
 
-def iquest_replicas( path, user = None, recursive = False, resource = None, resource_group_replicas = True ):
+def iquest_replicas( path, user = None, recursive = False, resource = None, resource_group_replicas = True,
+                     date = False ):
     "gather replica status dictionary"
 
     def replica_dict( output ):
@@ -17,23 +18,57 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
             path, replnum = pr
 
             if path not in ret: ret[path] = replnum
-            else: ret[path] += replnum
+            else:
+                ret[path] += replnum
 
         return ret
 
-    def iquest_filter(e):
+    def iquest_filter( e ):
         if "CAT_NO_ROWS_FOUND" in e: return None
 
         path, replnum = e.rsplit( ':', 1 )
 
         return path, int( replnum )
 
+    def replica_dict_with_date( output ):
+        ret = {}
+
+        for pr in output:
+
+            if pr is None: continue
+
+            path, replnum, date = pr
+
+            if path not in ret: ret[path] = [replnum, date]
+            else:
+                ret[path][0] += replnum
+                ret[path][1] = max( ret[path][1], date )
+
+        return ret
+
+    def iquest_filter_with_date(e):
+        if "CAT_NO_ROWS_FOUND" in e: return None
+
+        path, replnum, date = e.rsplit( ':', 2 )
+
+        return path, int( replnum ), int( date )
+
     resc_column = "RESC_GROUP_NAME"
     if not resource_group_replicas:
         resc_column = "RESC_NAME"
 
-    iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", "no-distinct", "%s/%s:%s"],
-                                       output_filter = iquest_filter, verbose = False )
+    fmt = "%s/%s:%s"
+    filter_ = iquest_filter
+    build_dict = replica_dict
+    select = "select COLL_NAME, DATA_NAME, count(DATA_REPL_NUM)"
+    if date:
+        fmt = fmt + ":%s"
+        filter_ = iquest_filter_with_date
+        build_dict = replica_dict_with_date
+        select += ", max(DATA_MODIFY_TIME)"
+
+    iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", "no-distinct", fmt],
+                                       output_filter = filter_, verbose = False )
 
     condition1_list = ["COLL_NAME = '%s'" % path]
     condition2_list = ["COLL_NAME like '%s/%%'" % path]
@@ -51,8 +86,6 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
     condition1 = " and ".join(condition1_list)
     condition2 = " and ".join(condition2_list)
 
-    select = "select COLL_NAME, DATA_NAME, count(DATA_REPL_NUM)"
-
     select1 = select + " where " + condition1
     select2 = select + " where " + condition2
 
@@ -60,12 +93,12 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
 
     output = iquest( [select1] )
 
-    ret.update( replica_dict( output ) )
+    ret.update( build_dict( output ) )
 
     if recursive:
         output = iquest( [select2] )
 
-        ret.update( replica_dict( output ) )
+        ret.update( build_dict( output ) )
 
     return ret
 
