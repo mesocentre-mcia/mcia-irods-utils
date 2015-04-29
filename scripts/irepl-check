@@ -170,6 +170,9 @@ class ReplicaNumConstraint:
     def max( self, path ):
         raise NotImplementedError
 
+    def failmsg( self, path ):
+        raise NotImplementedError
+
 class MinConstraint(ReplicaNumConstraint):
     def __init__( self, replnum ):
         self.replnum = replnum
@@ -181,6 +184,9 @@ class MinConstraint(ReplicaNumConstraint):
 
     def max( self, path ):
         return sys.maxint
+
+    def failmsg( self, e ):
+        return "<%d" % self.replnum
 
 class MaxConstraint(ReplicaNumConstraint):
     def __init__( self, replnum ):
@@ -194,6 +200,9 @@ class MaxConstraint(ReplicaNumConstraint):
     def max( self, path ):
         return self.replnum
 
+    def failmsg( self, e ):
+        return ">%d" % self.replnum
+
 class ExactConstraint( ReplicaNumConstraint ):
     def __init__( self, replnum ):
         self.replnum = replnum
@@ -205,6 +214,9 @@ class ExactConstraint( ReplicaNumConstraint ):
 
     def max( self, path ):
         return self.replnum
+
+    def failmsg( self, e ):
+        return "!=%d" % self.replnum
 
 class RangeConstraint( ReplicaNumConstraint ):
     def __init__( self, min_, max_ ):
@@ -219,6 +231,13 @@ class RangeConstraint( ReplicaNumConstraint ):
 
     def max( self, path ):
         return self.max_
+
+    def failmsg( self, e ):
+        if e[1] > self.max_:
+            return ">%d" % self.max_
+        elif e[1] < self.min_:
+            return "<%d" % self.min_
+        return "???"
 
 class MetadataConstraint( ReplicaNumConstraint ):
     def __init__( self, metadata_dict, fallback ):
@@ -241,7 +260,6 @@ class MetadataConstraint( ReplicaNumConstraint ):
             return 0
         return self.metadata_dict[coll]
 
-
     def max( self, path ):
         coll = os.path.dirname( path )
         if coll not in self.metadata_dict:
@@ -249,6 +267,14 @@ class MetadataConstraint( ReplicaNumConstraint ):
                 return self.fallback.max( path )
             return sys.maxint
         return self.metadata_dict[coll]
+
+    def failmsg( self, e ):
+        coll = os.path.dirname( e[0] )
+        if coll not in self.metadata_dict:
+            if self.fallback is not None:
+                return self.fallback.failmsg( e )
+            return "???"
+        return "!=md(%d)" % self.metadata_dict[coll]
 
 class ORedListConstraint( ReplicaNumConstraint ):
     def __init__( self, constraints = None ):
@@ -273,6 +299,13 @@ class ORedListConstraint( ReplicaNumConstraint ):
             max_ = max ( max_, constraint.min( path ) )
 
         return max_
+
+    def failmsg( self, e ):
+        ret = []
+        for constraint in self.constraints:
+            if not constraint( e ): ret.append( constraint.failmsg( e ) )
+
+        return ",".join( ret ) or "???"
 
 def parse_condition( arg, collection, recursive ):
     condition = None
@@ -342,21 +375,20 @@ def do_irepl_check( collection, condition, user, recursive, verbose, resource,
 
     failed = replicas_failed_filter( replicas, condition, date )
 
-    failmsg = "%s : %s"
+    failmsg = "%s : %s (%s)"
     if verbose:
-        failmsg = "Failed: \"%s\" has %d replicas"
+        failmsg = "Failed: \"%s\" has %d replicas (breaks constraints: %s)"
 
     if date:
         grace_failed = []
         for f in failed:
             d = datetime.datetime.fromtimestamp( f[1][1] )
             if d < grace_date:
-                grace_failed.append( f )
-                print failmsg % ( f[0], f[1][0] )
+                grace_failed.append( ( f[0], f[1][0] ) )
         failed = grace_failed
-    else:
-        for f in failed:
-            print failmsg % ( f[0], f[1] )
+
+    for f in failed:
+        print failmsg % ( f[0], f[1], condition.failmsg( f ) )
 
     if repair and failed:
 
