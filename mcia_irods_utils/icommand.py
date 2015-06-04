@@ -39,7 +39,7 @@ class DirectOutputIrodsCommand( IrodsCommand ):
 
         p.wait()
 
-        if p.returncode != 0: raise subprocess.CalledProcessError
+        if p.returncode != 0: raise subprocess.CalledProcessError( " ".join( cmdlist ), p.returncode, stdout )
 
         stdout.seek( 0 )
 
