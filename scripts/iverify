@@ -1,0 +1,189 @@
+#! /usr/bin/env python
+
+import sys
+import shlex
+
+from mcia_irods_utils import DirectOutputIrodsCommand, IrodsCommand, iargw, isrel, guess_icwd
+
+def _iquest_fmt( fields ):
+    return  " ".join( ["'%s'" for _x in fields] )
+
+class _iquest_row_filter:
+  def __init__( self, fields ):
+      self.fields = fields
+
+  def __call__( self, row ):
+    if "CAT_NO_ROWS_FOUND" in row: return None
+
+    cols = shlex.split( row )
+    ret = {}
+
+    for i, f in enumerate( cols ):
+        ret[self.fields[i]] = f
+
+    return ret
+
+def iquest_recursive_collection( path, fields, conditions = [] ):
+
+    fmt = _iquest_fmt( fields )
+
+    iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", fmt],
+                          output_filter = _iquest_row_filter( fields ), verbose = False )
+
+    select = "select " + ",".join( fields )
+
+    where_clause = "where " + " and ".join( ["COLL_NAME = '%s'" % path] + conditions )
+
+    output = iquest( [' '.join ( [select, where_clause] )] )
+    for l in output:
+        if l is None: continue
+        yield l
+
+    where_clause = "where " + " and ".join( ["COLL_NAME like '%s/%%'" % path] + conditions )
+
+    output = iquest( [' '.join ( [select, where_clause] )] )
+    for l in output:
+        if l is None: continue
+        yield l
+
+
+def iquest_local_rescs( hostname, conditions = [] ):
+
+    fields = [
+      "RESC_VAULT_PATH",
+      "RESC_LOC",
+    ]
+
+    fmt = _iquest_fmt( fields )
+
+    iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", fmt],
+                          output_filter = _iquest_row_filter( fields ), verbose = False )
+
+    select = "select " + ",".join( fields )
+
+    where_clause = "where " + " and ".join( ["RESC_LOC = '%s'" % hostname] + conditions )
+
+    output = iquest( [' '.join ( [select, where_clause] )] )
+    return list( output )
+
+def data_repls( path, conditions ):
+
+    file_fields = [
+      "COLL_NAME",
+      "DATA_NAME",
+      "DATA_REPL_NUM",
+      "DATA_CHECKSUM",
+      "DATA_PATH",
+      "RESC_LOC",
+    ]
+
+    return file_fields, iquest_recursive_collection( path, file_fields, conditions )
+
+_ichksum_cmd = IrodsCommand( "ichksum", ["-K"], verbose = False )
+def ichksum( r, verbose ):
+    directory = r["COLL_NAME"]
+    filename = r["DATA_NAME"]
+    repl = r["DATA_REPL_NUM"]
+    path = os.path.join( directory, filename )
+
+    if verbose:
+        print "irods check:", path
+
+    retcode, output = _ichksum_cmd( [path, "-n", repl] )
+    if retcode != 0:
+        sys.stderr.write( " ".join( [path, repl, retcode, output] ) + "\n" )
+
+    return retcode
+
+_local_ichksum_cmd = IrodsCommand( "md5sum", verbose = False )
+def local_ichksum( r, verbose ):
+    directory = r["COLL_NAME"]
+    filename = r["DATA_NAME"]
+    repl = r["DATA_REPL_NUM"]
+    path = os.path.join( directory, filename )
+
+    if verbose:
+        print "local check:", path, r["DATA_PATH"]
+
+    retcode, output = _local_ichksum_cmd( [r["DATA_PATH"]] )
+    if retcode != 0:
+        sys.stderr.write( " ".join( [path, repl, retcode, output] ) )
+        return retcode
+
+    md5sum, _localpath = output.split( " ", 1 )
+
+    if md5sum != r["DATA_CHECKSUM"]:
+        sys.stderr.write( " ".join( [path, repl, "local checksum failed:", md5sum,
+                                     "(should be %s)" % r["DATA_CHECKSUM"]] ) + "\n" )
+        return 255
+    return 0
+
+if __name__ == "__main__":
+    import os.path
+
+    from optparse import OptionParser
+
+    usage = """\
+usage: %prog [options] COLLECTION...
+
+
+"""
+
+    parser = OptionParser( usage = usage )
+    parser.add_option( "-u", "--user", dest = "user", default = None,
+                       help = "only for user" )
+
+    parser.add_option( "-R", "--resource", dest = "resource", default = None,
+                       help = "only for resource" )
+
+    parser.add_option( "-H", "--resource-host", dest = "resource_host", default = None,
+                       help = "check files on resource host" )
+
+    parser.add_option( "--no-irods-check", dest = "irods_check", default = True,
+                       action = "store_false",
+                       help = "don't verify checksums with ichksum " )
+
+    parser.add_option( "-l", "--local-check", dest = "local_check", default = False,
+                       action = "store_true",
+                       help = "checksums are to be verified locally (with md5sum)" )
+
+    parser.add_option( "-v", "--verbose", dest = "verbose", default = False,
+                       action = "store_true",
+                       help = "verbose output" )
+
+
+    ( options, args ) = parser.parse_args()
+
+    if not args:
+        args = ["."]
+
+    conditions = []
+    if options.user is not None:
+        conditions.append( "DATA_OWNER_NAME = '%s'" % options.user )
+
+    if options.resource is not None:
+        conditions.append( " DATA_RESC_NAME = '%s'" % options.resource )
+
+    icwd = guess_icwd()
+
+    collections = iargw( args, icwd )
+
+    if options.resource_host is not None:
+        # rescs = iquest_local_rescs( options.resource_host )
+        conditions.append( "RESC_LOC = '%s'" % options.resource_host )
+
+    for collection in collections:
+
+        # iquest doesn't support relative paths
+        if isrel( collection ):
+            collection = os.path.normpath( icwd + '/' + collection )
+
+        fields, ret = data_repls( collection, conditions )
+
+
+        for r in ret:
+            if options.local_check:
+                local_ichksum( r, options.verbose )
+
+            if options.irods_check:
+                ichksum( r, options.verbose )
