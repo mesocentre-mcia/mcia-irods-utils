@@ -2,6 +2,7 @@
 
 import sys
 import shlex
+import re
 
 from mcia_irods_utils import DirectOutputIrodsCommand, IrodsCommand, iargw, isrel, guess_icwd
 
@@ -81,33 +82,29 @@ def data_repls( path, conditions ):
 
 _ichksum_cmd = IrodsCommand( "ichksum", ["-K"], verbose = False )
 def ichksum( r, verbose ):
-    directory = r["COLL_NAME"]
-    filename = r["DATA_NAME"]
     repl = r["DATA_REPL_NUM"]
-    path = os.path.join( directory, filename )
+    path = r["path"]
 
     if verbose:
         print "irods check:", path
 
     retcode, output = _ichksum_cmd( [path, "-n", repl] )
     if retcode != 0:
-        sys.stderr.write( " ".join( [path, repl, retcode, output] ) + "\n" )
+        sys.stderr.write( " ".join( [path, repl, str( retcode ), output] ) + "\n" )
 
     return retcode
 
 _local_ichksum_cmd = IrodsCommand( "md5sum", verbose = False )
 def local_ichksum( r, verbose ):
-    directory = r["COLL_NAME"]
-    filename = r["DATA_NAME"]
     repl = r["DATA_REPL_NUM"]
-    path = os.path.join( directory, filename )
+    path = r["path"]
 
     if verbose:
         print "local check:", path, r["DATA_PATH"]
 
     retcode, output = _local_ichksum_cmd( [r["DATA_PATH"]] )
     if retcode != 0:
-        sys.stderr.write( " ".join( [path, repl, retcode, output] ) )
+        sys.stderr.write( " ".join( [path, repl, str( retcode ), output] ) )
         return retcode
 
     md5sum, _localpath = output.split( " ", 1 )
@@ -151,6 +148,9 @@ usage: %prog [options] COLLECTION...
                        action = "store_true",
                        help = "verbose output" )
 
+    parser.add_option( "--ignore", metavar = "REGEXP",
+                      dest = "ignore", default = [], action = "append",
+                      help = "ignore files satifying REGEXP (option can be called multiple times)" )
 
     ( options, args ) = parser.parse_args()
 
@@ -172,6 +172,10 @@ usage: %prog [options] COLLECTION...
         # rescs = iquest_local_rescs( options.resource_host )
         conditions.append( "RESC_LOC = '%s'" % options.resource_host )
 
+    ignore_regexps = []
+    for regexp in options.ignore:
+        ignore_regexps.append( re.compile( regexp ) )
+
     for collection in collections:
 
         # iquest doesn't support relative paths
@@ -182,6 +186,21 @@ usage: %prog [options] COLLECTION...
 
 
         for r in ret:
+            directory = r["COLL_NAME"]
+            filename = r["DATA_NAME"]
+            path = os.path.join( directory, filename )
+            r["path"] = path
+
+
+            proceed = True
+            for regexp in ignore_regexps:
+                if regexp.match( path ):
+                    if options.verbose:
+                        print "ignoring replica:", path, r["DATA_REPL_NUM"]
+                    proceed = False
+                    break
+            if not proceed: continue
+
             if options.local_check:
                 local_ichksum( r, options.verbose )
 
