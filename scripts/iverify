@@ -3,6 +3,7 @@
 import sys
 import shlex
 import re
+import time
 
 from mcia_irods_utils import DirectOutputIrodsCommand, IrodsCommand, iargw, isrel, guess_icwd
 
@@ -86,7 +87,7 @@ def ichksum( r, verbose ):
     path = r["path"]
 
     if verbose:
-        print "irods check:", path
+        print "irods check:", path, repl
 
     retcode, output = _ichksum_cmd( [path, "-n", repl] )
     if retcode != 0:
@@ -152,6 +153,14 @@ usage: %prog [options] COLLECTION...
                       dest = "ignore", default = [], action = "append",
                       help = "ignore files satifying REGEXP (option can be called multiple times)" )
 
+    parser.add_option( "--older-days", metavar = "DAYS",
+                      type = "int", dest = "older", default = None,
+                      help = "consider only replicas older than DAYS days" )
+
+    parser.add_option( "--newer-days", metavar = "DAYS",
+                      type = "int", dest = "newer", default = None,
+                      help = "consider only replicas newer than DAYS days" )
+
     ( options, args ) = parser.parse_args()
 
     if not args:
@@ -162,7 +171,21 @@ usage: %prog [options] COLLECTION...
         conditions.append( "DATA_OWNER_NAME = '%s'" % options.user )
 
     if options.resource is not None:
-        conditions.append( " DATA_RESC_NAME = '%s'" % options.resource )
+        conditions.append( "DATA_RESC_NAME = '%s'" % options.resource )
+
+    older_date = None
+    if options.older:
+        older_date = time.time() - options.older * 24 * 3600.
+        conditions.append( "DATA_MODIFY_TIME < '0%s'" % int( older_date ) )
+        if options.verbose:
+            print "Check replicas older than: %d days (date=%s)" % ( options.older, older_date )
+
+    newer_date = None
+    if options.newer:
+        newer_date = time.time() - options.newer * 24 * 3600.
+        conditions.append( "DATA_MODIFY_TIME > '0%s'" % int( newer_date ) )
+        if options.verbose:
+            print "Check replicas newer than: %d days (date=%s)" % ( options.newer, newer_date )
 
     icwd = guess_icwd()
 
