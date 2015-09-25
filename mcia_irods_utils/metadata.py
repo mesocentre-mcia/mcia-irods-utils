@@ -7,7 +7,7 @@ def iquest_collection_metadata( collection, metaname = None, metavalue = None, m
 
         return [x.split( "'", 3 ) for x in e.strip().split( "\n" )]
 
-    iquest = IrodsCommand( "iquest", ["%s'%s'%s'%s"], output_filter = iquest_filter2, verbose = False )
+    iquest = IrodsCommand( "iquest", ["--no-page", "%s'%s'%s'%s"], output_filter = iquest_filter2, verbose = False )
 
     select = "select COLL_NAME, META_COLL_ATTR_NAME, META_COLL_ATTR_VALUE, META_COLL_ATTR_UNITS"
 
