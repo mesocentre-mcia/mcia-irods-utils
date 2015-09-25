@@ -9,7 +9,7 @@ def iquest_filter( e ):
 
 def collection_list( collection, recursive ):
     collections = [collection]
-    iquest = IrodsCommand( "iquest", ["%s"], output_filter = iquest_filter )
+    iquest = IrodsCommand( "iquest", ["--no-page", "%s"], output_filter = iquest_filter )
 
     retcode, output = iquest( ["select COLL_NAME where COLL_NAME like '%s/%%'" % collection] )
 
