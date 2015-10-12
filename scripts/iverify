@@ -61,6 +61,7 @@ def data_repls( path, conditions ):
 
     return file_fields, iquest_recursive_collection( path, file_fields, conditions )
 
+_ichksum_cmd = IrodsCommand( "ichksum", ["-f"], verbose = False )
 def ichksum( r, verbose ):
     repl = r["DATA_REPL_NUM"]
     path = r["path"]
