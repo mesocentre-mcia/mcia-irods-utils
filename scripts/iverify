@@ -79,14 +79,21 @@ _local_ichksum_cmd = IrodsCommand( "md5sum", verbose = False )
 def local_ichksum( r, verbose ):
     repl = r["DATA_REPL_NUM"]
     path = r["path"]
+    data_path = r["DATA_PATH"]
 
     if verbose:
+        print "local check:", path, data_path
 
+    retcode, output = _local_ichksum_cmd( [data_path] )
     if retcode != 0:
         sys.stderr.write( " ".join( [path, repl, str( retcode ), output] ) )
         return retcode
 
     md5sum, _localpath = output.split( " ", 1 )
+
+    # md5sum has a weird behaviour with filenames containing backslashes: it prefixes its output with a backslash too!
+    # swallow it if present
+    if md5sum.startswith( '\\' ): md5sum = md5sum[1:]
 
     if md5sum != r["DATA_CHECKSUM"]:
         sys.stderr.write( " ".join( [path, repl, "local checksum failed:", md5sum,
