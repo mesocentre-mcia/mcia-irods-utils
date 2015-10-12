@@ -48,26 +48,6 @@ def iquest_recursive_collection( path, fields, conditions = [] ):
         if l is None: continue
         yield l
 
-
-def iquest_local_rescs( hostname, conditions = [] ):
-
-    fields = [
-      "RESC_VAULT_PATH",
-      "RESC_LOC",
-    ]
-
-    fmt = _iquest_fmt( fields )
-
-    iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", fmt],
-                          output_filter = _iquest_row_filter( fields ), verbose = False )
-
-    select = "select " + ",".join( fields )
-
-    where_clause = "where " + " and ".join( ["RESC_LOC = '%s'" % hostname] + conditions )
-
-    output = iquest( [' '.join ( [select, where_clause] )] )
-    return list( output )
-
 def data_repls( path, conditions ):
 
     file_fields = [
@@ -81,7 +61,6 @@ def data_repls( path, conditions ):
 
     return file_fields, iquest_recursive_collection( path, file_fields, conditions )
 
-_ichksum_cmd = IrodsCommand( "ichksum", ["-K"], verbose = False )
 def ichksum( r, verbose ):
     repl = r["DATA_REPL_NUM"]
     path = r["path"]
@@ -101,9 +80,7 @@ def local_ichksum( r, verbose ):
     path = r["path"]
 
     if verbose:
-        print "local check:", path, r["DATA_PATH"]
 
-    retcode, output = _local_ichksum_cmd( [r["DATA_PATH"]] )
     if retcode != 0:
         sys.stderr.write( " ".join( [path, repl, str( retcode ), output] ) )
         return retcode
@@ -192,7 +169,6 @@ usage: %prog [options] COLLECTION...
     collections = iargw( args, icwd )
 
     if options.resource_host is not None:
-        # rescs = iquest_local_rescs( options.resource_host )
         conditions.append( "RESC_LOC = '%s'" % options.resource_host )
 
     ignore_regexps = []
