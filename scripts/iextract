@@ -17,17 +17,19 @@ def save_csv( headers, rows, outfile = sys.stdout ):
     outfile.write( ",".join( headers ) + "\n" )
   
     for r in rows:
-        outfile.write( ",".join( ["'%s'" % x for x in r] ) + "\n" )
+        outfile.write( ",".join( ["'%s'" % x.replace( "'", "\\'" ) for x in r] ) + "\n" )
 
 def iquest_recursive_collection( path, fields ):
 
+    # format iquest results with a very unlikely separator
+    _field_separator = '\8' # backspace
     def _iquest_fmt( fields ):
-        return  " ".join( ["'%s'" for _x in fields] )
+        return  _field_separator.join( ["%s" for _x in fields] )
 
     def _iquest_row_filter( row ):
         if "CAT_NO_ROWS_FOUND" in row: return None
 
-        return shlex.split( row )
+        return row.rstrip().split( _field_separator )
 
     fmt = _iquest_fmt( fields )
 
