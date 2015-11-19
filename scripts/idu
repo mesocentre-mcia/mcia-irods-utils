@@ -41,6 +41,47 @@ def iquest_du_base(path):
 
     return local_base
 
+def iquest_du_logical_base( path ):
+    "gather collection disk usage stats in logical file size"
+
+    _field_separator = '\8' # backspace
+
+    def _fmt(n):
+        return _field_separator.join( ["%s"] * n )
+
+    def iquest_filter( e ):
+        if "CAT_NO_ROWS_FOUND" in e: return {}
+
+        colls = e.strip().split( '\n' )
+
+        ret = {}
+        for c in colls:
+            size, path, _name = c.split( _field_separator, 2 )
+            if path not in ret: ret[path] = 0
+            ret[path] += int( size )
+
+        return ret
+
+    iquest = IrodsCommand( "iquest", ["--no-page", "no-distinct"],
+                           output_filter = iquest_filter, verbose = False )
+
+    select = "select max(DATA_SIZE), COLL_NAME, DATA_NAME"
+    where_local = "where COLL_NAME = '%s'" % path
+    where_recursive = "where COLL_NAME like '%s/%%'" % path
+
+    _retcode, local_base = iquest( [_fmt(3), ' '.join ( [select, where_local] )] )
+
+    _retcode, recursive_base = iquest( [_fmt(3), ' '.join ( [select, where_recursive] )] )
+    local_base.update( recursive_base )
+
+    if not local_base:
+        # path may be a file
+        select = "select max(DATA_SIZE), COLL_NAME, DATA_NAME"
+        where_file = "where COLL_NAME = '%s' and DATA_NAME = '%s'" % os.path.split( path )
+        _retcode, local_base = iquest( ["%s:%s/%s", ' '.join ( [select, where_file] )] )
+
+    return local_base
+
 def _path_cmp( a, b ):
     # path comparison function: replace '/' in order it takes precedence over all characters
     return cmp( a.replace( '/', chr( 0 ) ), b.replace( '/', chr( 0 ) ) )
@@ -180,6 +221,11 @@ summary disk usage for each COLLECTION, recursively.
                       action="store_const", dest="maxdepth",
                       help="display only a total for each argument")
 
+    parser.add_option( "--logical-size",
+                      action = "store_true", dest = "logical_size", default = False,
+                      help = "display logical file size (i.e. don't " )
+
+
     (options, args) = parser.parse_args()
 
     if not args: args = ['.']
@@ -193,7 +239,11 @@ summary disk usage for each COLLECTION, recursively.
         if isrel( collection ):
             collection = os.path.normpath( icwd + '/' + collection )
 
-        base = iquest_du_base(collection)
+        base = {}
+        if options.logical_size:
+            base = iquest_du_logical_base( collection )
+        else:
+            base = iquest_du_base( collection )
 
         if not base:
             if not iquest_iscollection( collection ):
