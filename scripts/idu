@@ -223,7 +223,7 @@ summary disk usage for each COLLECTION, recursively.
 
     parser.add_option( "--logical-size",
                       action = "store_true", dest = "logical_size", default = False,
-                      help = "display logical file size (i.e. don't " )
+                      help = "display logical file size (i.e. don't count multiple replicas)" )
 
 
     (options, args) = parser.parse_args()
