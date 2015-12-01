@@ -5,7 +5,7 @@ def iquest_collection_metadata( collection, metaname = None, metavalue = None, m
     def iquest_filter2( e ):
         if "CAT_NO_ROWS_FOUND" in e: return []
 
-        return [x.split( "'", 3 ) for x in e.strip().split( "\n" )]
+        return [x.rsplit( "'", 3 ) for x in e.strip().split( "\n" )]
 
     iquest = IrodsCommand( "iquest", ["--no-page", "%s'%s'%s'%s"], output_filter = iquest_filter2, verbose = False )
 
