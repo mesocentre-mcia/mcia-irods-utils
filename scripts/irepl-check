@@ -156,7 +156,10 @@ def load_collection_metadata_dict( collection, metaname, recursive ):
     ret = {}
 
     for c, _a, v, _u in metadatas:
-        ret[c] = int( v )
+        try:
+          ret[c] = int( v )
+        except ValueError, e:
+          sys.stderr.write( "Skipping metadata (%s %s=%s %s) error: %s\n" % ( c, _a, v, _u, e ) )
 
     return ret
 
