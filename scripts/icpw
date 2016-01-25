@@ -1,0 +1,27 @@
+#! /usr/bin/env python
+
+import os.path
+from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
+
+icp = IrodsCommand( "icp" )
+
+if __name__ == "__main__":
+    import sys
+
+    icwd = guess_icwd()
+
+    args = iargw( sys.argv[1:] )
+
+    # because we spawn icp in a subprocess, we need to expand relative paths here,
+    # otherwise, icp wouldn't recognize wd correctly
+    newargs = []
+    for arg in args:
+        if isrel( arg ) and not arg.startswith( '-' ):
+            arg = os.path.normpath( icwd + '/' + arg )
+        newargs.append( arg )
+
+    retcode, output = icp( newargs )
+
+    print output.rstrip()
+
+    sys.exit( retcode )
