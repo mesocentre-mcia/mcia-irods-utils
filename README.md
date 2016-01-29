@@ -30,6 +30,8 @@ Some iRODS iCommands have been wrapped to allow server-side wildcards to be used
 * `ilsw`
 * `igetw`
 * `irmw`
+* `icpw`
+* `imvw`
 
 ## Disk usage
 
