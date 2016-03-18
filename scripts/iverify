@@ -61,9 +61,12 @@ def data_repls( path, conditions ):
       "DATA_CHECKSUM",
       "DATA_PATH",
       "RESC_LOC",
+      "DATA_ID",
     ]
 
     return file_fields, iquest_recursive_collection( path, file_fields, conditions )
+
+_file_chksum_cmd = IrodsCommand( "iquest", ["--no-page", "%s"], verbose = True )
 
 _ichksum_cmd = IrodsCommand( "ichksum", ["-f"], verbose = False )
 def ichksum( r, verbose ):
@@ -90,6 +93,13 @@ def local_ichksum( r, verbose ):
 
     retcode, output = _local_ichksum_cmd( [data_path] )
     if retcode != 0:
+        if not os.path.isfile( data_path ):
+            # double check catalog in case replica has changed in the meantime
+            retcode, new_path = _file_chksum_cmd( ["select DATA_PATH where DATA_ID = '%s' AND RESC_LOC = '%s' AND DATA_REPL_NUM = '%s'" % ( r["DATA_ID"], r["RESC_LOC"], r["DATA_REPL_NUM"], )] )
+            if new_path != data_path:
+                # replica has changed path, skip silently
+                return 0
+
         sys.stderr.write( " ".join( [path, repl, str( retcode ), output] ) )
         return retcode
 
@@ -100,8 +110,11 @@ def local_ichksum( r, verbose ):
     if md5sum.startswith( '\\' ): md5sum = md5sum[1:]
 
     if md5sum != r["DATA_CHECKSUM"]:
-        sys.stderr.write( " ".join( [path, repl, "local checksum failed:", md5sum,
-                                     "(should be %s)" % r["DATA_CHECKSUM"]] ) + "\n" )
+        # double check catalog checksum since it may have changed in the meantime
+        retcode, new_md5sum = _file_chksum_cmd( ["select DATA_CHECKSUM where DATA_ID = '%s' AND DATA_REPL_NUM = '%s'" % ( r["DATA_ID"], r["DATA_REPL_NUM"], )] )
+        if new_md5sum != md5sum:
+            sys.stderr.write( " ".join( [path, repl, "local checksum failed:", md5sum,
+                                         "(should be %s)" % r["DATA_CHECKSUM"]] ) + "\n" )
         return 255
     return 0
 
@@ -215,9 +228,9 @@ usage: %prog [options] COLLECTION...
                 try:
                     local_ichksum( r, options.verbose )
                 except Exception, e:
-                    sys.stderr.write( "Local checksum failed with exception:\n%e" % e )
+                    sys.stderr.write( "Local checksum failed with exception:\n%s" % e )
             if options.irods_check:
                 try:
                     ichksum( r, options.verbose )
                 except Exception, e:
-                    sys.stderr.write( "iRODS checksum failed with exception:\n%e" % e )
+                    sys.stderr.write( "iRODS checksum failed with exception:\n%s" % e )
