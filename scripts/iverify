@@ -13,28 +13,28 @@ def _iquest_fmt( fields ):
     return  _field_separator.join( ["%s" for _x in fields] )
 
 class _iquest_row_filter:
-  def __init__( self, fields ):
-      self.fields = fields
+    def __init__( self, fields ):
+        self.fields = fields
 
-  def __call__( self, row ):
-    if "CAT_NO_ROWS_FOUND" in row: return None
+    def __call__( self, row ):
+        if "CAT_NO_ROWS_FOUND" in row: return None
 
-    cols = row.rstrip().split( _field_separator )
-    ret = {}
+        cols = row.rstrip().split( _field_separator )
+        ret = {}
 
-    for i, f in enumerate( cols ):
-        try:
-          ret[self.fields[i]] = f
-        except IndexError, e:
-          sys.stderr.write( "iquest_recursive_collection failed with exception: file=%s index=%s\n" % ( f, i ) + e )
-    return ret
+        for i, f in enumerate( cols ):
+            try:
+                ret[self.fields[i]] = f
+            except IndexError, e:
+                sys.stderr.write( "iquest_recursive_collection failed with exception: file=%s index=%s\n" % ( f, i ) + e )
+        return ret
 
 def iquest_recursive_collection( path, fields, conditions = [] ):
 
     fmt = _iquest_fmt( fields )
 
     iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", fmt],
-                          output_filter = _iquest_row_filter( fields ), verbose = False )
+                                       output_filter = _iquest_row_filter( fields ), verbose = False )
 
     select = "select " + ",".join( fields )
 
@@ -65,6 +65,20 @@ def data_repls( path, conditions ):
     ]
 
     return file_fields, iquest_recursive_collection( path, file_fields, conditions )
+
+def check_replicas_consistency( repls ):
+    data_names = set( ['%s/%s' % ( x['COLL_NAME'], x['DATA_NAME'] ) for x in repls] )
+    data_checks = {n:{} for n in data_names}
+    
+    for r in repls:
+        path = '%s/%s' % ( r['COLL_NAME'], r['DATA_NAME'] )
+        checksum = r['DATA_CHECKSUM']
+        count = data_checks[path].setdefault( checksum, 0 )
+        data_checks[path][checksum] = count + 1
+
+    for name, checksums in data_checks.items():
+        if len( checksums ) > 1:
+            print "WARNING : inconsistent checksums for file \'%s\'" % name
 
 _file_chksum_cmd = IrodsCommand( "iquest", ["--no-page", "%s"], verbose = True )
 
@@ -147,6 +161,10 @@ usage: %prog [options] COLLECTION...
                        action = "store_true",
                        help = "checksums are to be verified locally (with md5sum)" )
 
+    parser.add_option( "-c", "--check-consistency", dest = "check_consistency", default = False,
+                       action = "store_true",
+                       help = "check multiple replicas of data objects to have identical checksums" )
+
     parser.add_option( "-v", "--verbose", dest = "verbose", default = False,
                        action = "store_true",
                        help = "verbose output" )
@@ -206,9 +224,13 @@ usage: %prog [options] COLLECTION...
         if isrel( collection ):
             collection = os.path.normpath( icwd + '/' + collection )
 
-        fields, ret = data_repls( collection, conditions )
+        fields_, ret = data_repls( collection, conditions )
 
-        for r in ret:
+        repls = list( ret )
+        if options.check_consistency:
+            check_replicas_consistency( repls )
+
+        for r in repls:
             directory = r["COLL_NAME"]
             filename = r["DATA_NAME"]
             path = os.path.join( directory, filename )
