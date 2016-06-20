@@ -6,7 +6,7 @@ from distutils.core import setup
 scripts = glob.glob( "scripts/i*" )
 
 setup( name = 'mcia-irods-utils',
-       version = '0.6.0',
+       version = '0.7.0',
        description = 'MCIA\'s iCommands utilities',
        author = 'Pierre Gay',
        author_email = 'pierre.gay@u-bordeaux.fr',
