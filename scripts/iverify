@@ -68,7 +68,8 @@ def data_repls( path, conditions ):
 
 def check_replicas_consistency( repls ):
     data_names = set( ['%s/%s' % ( x['COLL_NAME'], x['DATA_NAME'] ) for x in repls] )
-    data_checks = {n:{} for n in data_names}
+    data_checks = {}
+    for n in data_names: data_checks[n] = {}
     
     for r in repls:
         path = '%s/%s' % ( r['COLL_NAME'], r['DATA_NAME'] )
