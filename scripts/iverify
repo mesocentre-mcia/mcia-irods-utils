@@ -89,8 +89,6 @@ def check_replicas_consistency( repls, ignore_regexps = [], verbose = False ):
         if check and len( checksums ) > 1:
             print "WARNING : inconsistent checksums for file \'%s\'" % name
 
-_file_chksum_cmd = IrodsCommand( "iquest", ["--no-page", "%s"], verbose = True )
-
 _ichksum_cmd = IrodsCommand( "ichksum", ["-f"], verbose = False )
 def ichksum( r, verbose ):
     repl = r["DATA_REPL_NUM"]
@@ -104,6 +102,8 @@ def ichksum( r, verbose ):
         sys.stderr.write( " ".join( [path, repl, str( retcode ), output] ) + "\n" )
 
     return retcode
+
+_file_chksum_cmd = IrodsCommand( "iquest", ["--no-page", "%s"], output_filter = lambda e: e.strip(), verbose = False )
 
 _local_ichksum_cmd = IrodsCommand( "md5sum", verbose = False )
 def local_ichksum( r, verbose ):
