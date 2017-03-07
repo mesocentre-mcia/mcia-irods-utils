@@ -49,7 +49,7 @@ class DirectOutputIrodsCommand( IrodsCommand ):
 def parse_env(path):
     "parse iRODS iCommands environment files"
 
-    envre = re.compile("^\s*(?P<name>\w+)\s*[=\s]\s*['\"]?(?P<value>[^'\"]*[^'\"\s])['\"]?\s*")
+    envre = re.compile("^\s*(?P<name>\w+)\s*(=(?P<value1>.*)|\s+[\'\"](?P<value2>.*)[\'\"])\s*$")
 
     ret = {}
 
@@ -59,7 +59,7 @@ def parse_env(path):
             #print "parsing", l
             m = envre.match(l)
             if m:
-                ret[m.group("name")] = m.group("value")
+                ret[m.group("name")] = m.group("value1") or m.group("value2")
     return ret
 
 def guess_icwd():
