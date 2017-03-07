@@ -70,8 +70,8 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
     iquest = DirectOutputIrodsCommand( "iquest", ["--no-page", "no-distinct", fmt],
                                        output_filter = filter_, verbose = False )
 
-    condition1_list = ["COLL_NAME = '%s'" % path]
-    condition2_list = ["COLL_NAME like '%s/%%'" % path]
+    condition1_list = []
+    condition2_list = []
 
     if user:
         user_condition = "DATA_OWNER_NAME = '%s'" % user
@@ -82,6 +82,9 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
         rg_condition = resc_column + " = '%s'" % resource
         condition1_list.append(rg_condition)
         condition2_list.append(rg_condition)
+
+    condition1_list.append("COLL_NAME = '%s'" % path)
+    condition2_list.append("COLL_NAME like '%s/%%'" % path)
 
     condition1 = " and ".join(condition1_list)
     condition2 = " and ".join(condition2_list)

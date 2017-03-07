@@ -23,7 +23,7 @@ def iquest_collection_metadata( collection, metaname = None, metavalue = None, m
     if metaunit is not None:
         conditions.append( "META_COLL_ATTR_UNITS = '%s'" % metaunit )
 
-    select_cmd = select + " where " + " and ".join( [collection_condition] + conditions )
+    select_cmd = select + " where " + " and ".join( conditions + [collection_condition] )
 
     retcode, output = iquest( [select_cmd] )
 
@@ -33,7 +33,7 @@ def iquest_collection_metadata( collection, metaname = None, metavalue = None, m
 
     if recursive:
         recursive_condition = "COLL_NAME like '%s/%%'" % collection
-        select_cmd = select + " where " + " and ".join( [recursive_condition] + conditions )
+        select_cmd = select + " where " + " and ".join( conditions + [recursive_condition] )
         retcode, output2 = iquest( [select_cmd] )
 
         if retcode != 0:
