@@ -120,7 +120,11 @@ def file_replicas( path, resource_group_replicas = True ):
     iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
                           output_filter = iquest_filter, verbose = False)
 
-    _retcode, replicas = iquest( ["select %s, order_asc(DATA_REPL_NUM) where COLL_NAME = '%s' and DATA_NAME = '%s'" % ( ( resc_column, ) + os.path.split( path ) )] )
+    #FIXME: won't work if DATA_NAME contains apostrophes, also some charactes can't be escaped correctly
+    coll, name = os.path.split( path )
+    _retcode, replicas = iquest( ["select %s, order_asc(DATA_REPL_NUM) where DATA_NAME = '%s' and COLL_NAME = '%s'" %
+                                  (resc_column, name, coll)] )
+
 
     # FIXME: check return code
 
