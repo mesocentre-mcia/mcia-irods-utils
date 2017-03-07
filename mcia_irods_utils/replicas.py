@@ -15,20 +15,21 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
 
             if pr is None: continue
 
-            path, replnum = pr
+            path, replnum, dataid = pr
 
-            if path not in ret: ret[path] = replnum
+            if path not in ret: ret[path] = [replnum, dataid]
             else:
-                ret[path] += replnum
+                ret[path][0] += replnum
+
 
         return ret
 
     def iquest_filter( e ):
         if "CAT_NO_ROWS_FOUND" in e: return None
 
-        path, replnum = e.rsplit( ':', 1 )
+        path, replnum, dataid = e.rsplit( ':', 2 )
 
-        return path, int( replnum )
+        return path, int( replnum ), dataid
 
     def replica_dict_with_date( output ):
         ret = {}
@@ -39,28 +40,28 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
 
             path, replnum, date = pr
 
-            if path not in ret: ret[path] = [replnum, date]
+            if path not in ret: ret[path] = [replnum, dataid, date]
             else:
                 ret[path][0] += replnum
-                ret[path][1] = max( ret[path][1], date )
+                ret[path][2] = max( ret[path][2], date )
 
         return ret
 
     def iquest_filter_with_date(e):
         if "CAT_NO_ROWS_FOUND" in e: return None
 
-        path, replnum, date = e.rsplit( ':', 2 )
+        path, replnum, dataid, date = e.rsplit( ':', 3 )
 
-        return path, int( replnum ), int( date )
+        return path, int( replnum ), dataid, int( date )
 
     resc_column = "RESC_GROUP_NAME"
     if not resource_group_replicas:
         resc_column = "RESC_NAME"
 
-    fmt = "%s/%s:%s"
+    fmt = "%s/%s:%s:%s"
     filter_ = iquest_filter
     build_dict = replica_dict
-    select = "select COLL_NAME, DATA_NAME, count(DATA_REPL_NUM)"
+    select = "select COLL_NAME, DATA_NAME, count(DATA_REPL_NUM), DATA_ID"
     if date:
         fmt = fmt + ":%s"
         filter_ = iquest_filter_with_date
@@ -124,6 +125,28 @@ def file_replicas( path, resource_group_replicas = True ):
     coll, name = os.path.split( path )
     _retcode, replicas = iquest( ["select %s, order_asc(DATA_REPL_NUM) where DATA_NAME = '%s' and COLL_NAME = '%s'" %
                                   (resc_column, name, coll)] )
+
+
+    # FIXME: check return code
+
+    return replicas
+
+def dataid_replicas( data_id, resource_group_replicas = True ):
+    "return ordered list of replicas represented by RG and replica number"
+
+    resc_column = "RESC_GROUP_NAME"
+    if not resource_group_replicas:
+        resc_column = "RESC_NAME"
+
+    def iquest_filter( e ):
+        if "CAT_NO_ROWS_FOUND" in e: return []
+        values = e.strip().split('\n')
+        return [e.split(":") for e in values]
+
+    iquest = IrodsCommand("iquest", ["--no-page", "no-distinct", "%s:%s"],
+                          output_filter = iquest_filter, verbose = False)
+
+    _retcode, replicas = iquest(["select %s, order_asc(DATA_REPL_NUM) where DATA_ID = '%s'" % (resc_column, data_id)])
 
 
     # FIXME: check return code

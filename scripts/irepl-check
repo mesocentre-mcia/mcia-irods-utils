@@ -6,7 +6,7 @@ import os.path
 import datetime
 
 from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
-from mcia_irods_utils import iquest_replicas, file_replicas
+from mcia_irods_utils import iquest_replicas, dataid_replicas
 from mcia_irods_utils import iquest_collection_metadata
 from mcia_irods_utils import iquest_iscollection
 from mcia_irods_utils.icommand import DirectOutputIrodsCommand
@@ -16,16 +16,10 @@ def replicas_failed_filter( replicas, filter_, date = False ):
 
     failed = replicas.items()
 
-    def _failed_filter_date( e ):
+    def _failed_filter( e ):
         return not filter_( ( e[0], e[1][0] ) )
 
-    def _failed_filter_no_date( e ):
-        return not filter_( ( e[0], e[1] ) )
-
-    ff = _failed_filter_no_date
-    if date: ff = _failed_filter_date
-
-    failed = filter( ff, failed )
+    failed = filter( _failed_filter, failed )
 
     return failed
 
@@ -39,7 +33,7 @@ def _dry_run_itrim( cmdlist ):
     return 0, None
 
 
-def repair_replicas_number( path, condition, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
+def repair_replicas_number( path, data_id, condition, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
                             admin = False ):
     "issues actions to fix replica numbers according to constraint"
 
@@ -58,7 +52,7 @@ def repair_replicas_number( path, condition, r_list, dry_run = False, verbose = 
     if admin:
         opts.append( "-M" )
 
-    file_repls = file_replicas( path, resource_group_replicas = resource_group_replicas )
+    file_repls = dataid_replicas( data_id, resource_group_replicas = resource_group_replicas )
     file_rescs = [e[0] for e in file_repls]
 
     nrepl = len(file_rescs)
@@ -405,14 +399,14 @@ def do_irepl_check( collection, condition, user, recursive, verbose, resource,
         failed = grace_failed
 
     for f in failed:
-        print failmsg % ( f[0], f[1], condition.failmsg( f ) )
+        print failmsg % ( f[0], f[1][0], condition.failmsg( f ) )
 
     if repair and failed:
 
         r_list = get_resc_list()
         for f in failed:
 
-            repair_replicas_number( f[0], condition, r_list, dry_run = dry_run,
+            repair_replicas_number( f[0], f[1][1], condition, r_list, dry_run = dry_run,
                                     verbose = verbose,
                                     resource_group_replicas = resource_group_replicas,
                                     admin = admin )
