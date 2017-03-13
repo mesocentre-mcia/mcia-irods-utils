@@ -393,9 +393,9 @@ def do_irepl_check( collection, condition, user, recursive, verbose, resource,
     if date:
         grace_failed = []
         for f in failed:
-            d = datetime.datetime.fromtimestamp( f[1][1] )
+            d = datetime.datetime.fromtimestamp( f[1][2] )
             if d < grace_date:
-                grace_failed.append( ( f[0], f[1][0] ) )
+                grace_failed.append( ( f[0], f[1] ) )
         failed = grace_failed
 
     for f in failed:
