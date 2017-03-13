@@ -38,7 +38,7 @@ def iquest_replicas( path, user = None, recursive = False, resource = None, reso
 
             if pr is None: continue
 
-            path, replnum, date = pr
+            path, replnum, dataid, date = pr
 
             if path not in ret: ret[path] = [replnum, dataid, date]
             else:
