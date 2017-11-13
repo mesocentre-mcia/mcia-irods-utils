@@ -26,7 +26,8 @@ class _iquest_row_filter:
             try:
                 ret[self.fields[i]] = f
             except IndexError, e:
-                sys.stderr.write( "iquest_recursive_collection failed with exception: file=%s index=%s\n" % ( f, i ) + e )
+                sys.stderr.write( "iquest_recursive_collection failed with exception: file=%s index=%s\n" % ( f, i ) + str(e) + '\n' )
+                sys.stderr.write( "splitted row is: " + str(cols) + '\n' )
         return ret
 
 def iquest_recursive_collection( path, fields, conditions = [] ):
