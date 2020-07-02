@@ -9,7 +9,6 @@ if __name__ == "__main__":
     import sys
 
     icwd = guess_icwd()
-    print 'wd', icwd
     args = iargw( sys.argv[1:] )
 
     # because we spawn ils in a subprocess, we need to expand relative paths here,
