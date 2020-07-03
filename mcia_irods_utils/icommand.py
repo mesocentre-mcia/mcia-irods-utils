@@ -4,6 +4,7 @@ import os
 import string
 import re
 import subprocess
+import json
 
 class IrodsCommand:
     "An iRODS iCommand wrapper"
@@ -46,8 +47,17 @@ class DirectOutputIrodsCommand( IrodsCommand ):
         for l in stdout:
             yield self.output_filter( l )
 
-def parse_env(path):
+def env_file3(pid):
+    repo = os.path.expanduser(os.path.join("~", ".irods"))
+    return os.path.join(repo, ".irodsEnv.%d" % pid)
+
+def parse_env(path=None):
     "parse iRODS iCommands environment files"
+
+    if path is None:
+        path = env_file3(os.getpid())
+        if not os.path.isfile(path):
+            path = env_file3(os.getppid())
 
     envre = re.compile("^\s*(?P<name>\w+)\s*(=(?P<value1>.*)|\s+[\'\"](?P<value2>.*)[\'\"]|(?P<value3>[^\'\"].*))\s*$")
 
@@ -63,25 +73,33 @@ def parse_env(path):
 
     return ret
 
+def env_file4(pid):
+    repo = os.path.expanduser(os.path.join("~", ".irods"))
+    return os.path.join(repo, "irods_environment.json.%d" % pid)
+
+def parse_env4(path=None):
+    if path is None:
+        path = env_file4(os.getpid())
+        if not os.path.isfile(path):
+            path = env_file4(os.getppid())
+
+    return json.load(open(path, 'r'))
+
 def guess_icwd():
     "guess iCommand working directory"
-    pid = os.getpid()
-    ppid = os.getppid()
-
-    repo = os.path.expanduser(os.path.join("~", ".irods"))
 
     icwd = None
     try:
-        icwd = parse_env(os.path.join(repo, ".irodsEnv.%d" % pid))["irodsCwd"]
-    except:
+        #try iRODS v3 environment
+        icwd = parse_env()["irodsCwd"]
+    except Exception as e:
         try:
-            icwd = parse_env(os.path.join(repo, ".irodsEnv.%d" % ppid))["irodsCwd"]
-        except:
-            pass
-
-    if not icwd:
-        ipwd = IrodsCommand("ipwd", output_filter = string.strip)
-        _retcode, icwd = ipwd()
+            # try iRODS v4 environment
+            icwd = parse_env4()['irods_cwd']
+        except Exception as e:
+            # fallback to icommand
+            ipwd = IrodsCommand("ipwd", output_filter = string.strip)
+            _retcode, icwd = ipwd()
 
     return icwd
 
