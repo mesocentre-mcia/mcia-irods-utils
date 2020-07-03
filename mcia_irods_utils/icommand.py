@@ -47,11 +47,30 @@ class DirectOutputIrodsCommand( IrodsCommand ):
         for l in stdout:
             yield self.output_filter( l )
 
-def env_file3(pid):
+def guess_client_version():
+    'Guess iRODS icommands version number'
+    lines = DirectOutputIrodsCommand('ienv')([])
+
+    for l in lines:
+        if l.startswith('NOTICE: '):
+            m = re.match('^NOTICE: Release Version = rods(?P<major>\d+)\.(?P<minor>\d+)\.(?P<micro>\d+), API Version = .*$', l)
+            if m is not None:
+                return [int(d) for d in m.groups()]
+        else:
+            m = re.match('^irods_version - (?P<major>\d+)\.(?P<minor>\d+)\.(?P<micro>\d+)\w*$', l)
+            if m is not None:
+                return [int(d) for d in m.groups()]
+
+    return None
+
+def env_file3(pid=None):
     repo = os.path.expanduser(os.path.join("~", ".irods"))
+    if pid is None:
+        return os.path.join(repo, ".irodsEnv")
+
     return os.path.join(repo, ".irodsEnv.%d" % pid)
 
-def parse_env(path=None):
+def parse_env3(path=None):
     "parse iRODS iCommands environment files"
 
     if path is None:
@@ -73,8 +92,11 @@ def parse_env(path=None):
 
     return ret
 
-def env_file4(pid):
+def env_file4(pid=None):
     repo = os.path.expanduser(os.path.join("~", ".irods"))
+    if pid is None:
+        return os.path.join(repo, "irods_environment.json")
+
     return os.path.join(repo, "irods_environment.json.%d" % pid)
 
 def parse_env4(path=None):
@@ -85,13 +107,19 @@ def parse_env4(path=None):
 
     return json.load(open(path, 'r'))
 
+def load_env(pid=None):
+    if guess_client_version()[0] >= 4:
+        return parse_env4(env_file4(pid))
+
+    return parse_env3(env_file3(pid))
+
 def guess_icwd():
     "guess iCommand working directory"
 
     icwd = None
     try:
         #try iRODS v3 environment
-        icwd = parse_env()["irodsCwd"]
+        icwd = parse_env3()["irodsCwd"]
     except Exception as e:
         try:
             # try iRODS v4 environment
@@ -107,37 +135,39 @@ def guess_user(env = None):
     "guess iCommands iRODS user name" 
 
     if env is None:
-        envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
-        env = parse_env(envfile)
+        env = load_env()
 
     try:
+        user = env["irods_user_name"]
+    except KeyError:
         user = env["irodsUserName"]
-    except:
-        user = os.getlogin()
+
     return user
 
 def guess_zone(env = None):
     "guess iCommands iRODS zone" 
 
     if env is None:
-        envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
-        env = parse_env(envfile)
+        env = load_env()
 
     try:
+        zone = env["irods_zone_name"]
+    except KeyError:
         zone = env["irodsZone"]
-    except:
-        zone = "tempZone"
+
     return zone
 
 def guess_home(env = None):
     "guess iCommands iRODS user home collection" 
 
     if env is None:
-        envfile = os.path.expanduser(os.path.join("~", ".irods", ".irodsEnv"))
-        env = parse_env(envfile)
+        env = load_env()
 
     try:
-        home = env["irodsHome"]
+        try:
+            home = env["irods_home"]
+        except KeyError:
+            home = env["irodsHome"]
     except:
         home = "/".join(["", guess_zone(env), "home", guess_user(env)])
     return home
@@ -159,8 +189,7 @@ def getenv( var_name ):
     if var_name in os.environ:
         var = os.environ[var_name]
     else:
-        envfile = os.path.expanduser( os.path.join( "~", ".irods", ".irodsEnv" ) )
-        env = parse_env( envfile )
+        env = load_env()
         if var_name in env:
             var = env[var_name]
 
