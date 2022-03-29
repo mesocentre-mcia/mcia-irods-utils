@@ -144,6 +144,7 @@ summary disk usage for each COLLECTION, recursively.
 
     collections = iargw( args, icwd )
 
+    return_code = 0
     for collection in collections:
 
         # iquest doesn't support relative paths
@@ -159,6 +160,7 @@ summary disk usage for each COLLECTION, recursively.
         if not base:
             if not iquest_iscollection( collection ):
                 print "Error: \"%s\" not found" % collection
+                return_code = -1
                 continue
 
         if collection not in base:
@@ -175,3 +177,5 @@ summary disk usage for each COLLECTION, recursively.
             maxdepth = collection.count('/') + options.maxdepth
 
         base_print(base, maxdepth)
+
+    sys.exit(return_code)
