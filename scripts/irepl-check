@@ -1,44 +1,54 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import re
 import random
 import os.path
 import datetime
 
-from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv
+from mcia_irods_utils import (
+    IrodsCommand, isrel, guess_icwd, guess_user, getenv
+)
 from mcia_irods_utils import iquest_replicas, dataid_replicas
 from mcia_irods_utils import iquest_collection_metadata
 from mcia_irods_utils import iquest_iscollection
 from mcia_irods_utils.icommand import DirectOutputIrodsCommand
 
-def replicas_failed_filter( replicas, filter_, date = False ):
+
+def replicas_failed_filter(replicas, filter_, date=False):
     "filter replica statuses that fail a condition"
 
-    failed = replicas.items()
+    failed = list(replicas.items())
 
-    def _failed_filter( e ):
-        return not filter_( ( e[0], e[1][0] ) )
+    def _failed_filter(e):
+        return not filter_((e[0], e[1][0]))
 
-    failed = filter( _failed_filter, failed )
+    failed = list(filter(_failed_filter, failed))
 
     return failed
 
-_irepl = IrodsCommand( "irepl" )
-_itrim = IrodsCommand( "itrim" )
-def _dry_run_irepl( cmdlist ):
-    print "DRY RUN: irepl " + " ".join( cmdlist )
-    return 0, None
-def _dry_run_itrim( cmdlist ):
-    print "DRY RUN: itrim " + " ".join( cmdlist )
+
+_irepl = IrodsCommand("irepl")
+_itrim = IrodsCommand("itrim")
+
+
+def _dry_run_irepl(cmdlist):
+    print("DRY RUN: irepl " + " ".join(cmdlist))
     return 0, None
 
 
-def repair_replicas_number( path, data_id, condition, r_list, dry_run = False, verbose = False, resource_group_replicas = False,
-                            admin = False ):
+def _dry_run_itrim(cmdlist):
+    print("DRY RUN: itrim " + " ".join(cmdlist))
+    return 0, None
+
+
+def repair_replicas_number(
+    path, data_id, condition, r_list, dry_run=False, verbose=False,
+    resource_group_replicas=False, admin=False
+):
     "issues actions to fix replica numbers according to constraint"
 
-    min_ = condition.min( path )
-    max_ = condition.max( path )
+    min_ = condition.min(path)
+    max_ = condition.max(path)
 
     irepl = _irepl
     itrim = _itrim
@@ -50,27 +60,27 @@ def repair_replicas_number( path, data_id, condition, r_list, dry_run = False, v
     opts = []
 
     if admin:
-        opts.append( "-M" )
+        opts.append("-M")
 
-    file_repls = dataid_replicas( data_id, resource_group_replicas = resource_group_replicas )
+    file_repls = dataid_replicas(data_id, resource_group_replicas = resource_group_replicas)
     file_rescs = [e[0] for e in file_repls]
 
     nrepl = len(file_rescs)
 
     if verbose:
-        print "repair", path, "replicas:", ["#%s (%s)" % (x[1], x[0]) for x in file_repls], "available:", r_list
+        print("repair", path, "replicas:", ["#%s (%s)" % (x[1], x[0]) for x in file_repls], "available:", r_list)
 
     if nrepl < min_:
         # compute where to put new replicas according to r_list priority order
         possible_rescs = [x for x in r_list if x not in file_rescs]
 
-        if not possible_rescs: print "WARNING: cannot add replicas for \"%s\" because not enough online Resources" % path
+        if not possible_rescs: print("WARNING: cannot add replicas for \"%s\" because not enough online Resources" % path)
 
         for i in range(max(0, min_ - nrepl)):
-            print path, ": add replica (%s)" % possible_rescs[i]
-            retcode, output = irepl( opts + ["-R", possible_rescs[i], path] )
+            print(path, ": add replica (%s)" % possible_rescs[i])
+            retcode, output = irepl(opts + ["-R", possible_rescs[i], path])
             if retcode != 0:
-                print "ERROR:", output
+                print("ERROR:", output)
 
     if nrepl > max_:
 
@@ -80,41 +90,47 @@ def repair_replicas_number( path, data_id, condition, r_list, dry_run = False, v
 
         for i in range(max(0, nrepl - max_)):
             if i > len(remove_rescs):
-                print "WARNING: \"%s\" cannot remove %dith replica because Resource not online" % ( path, i )
+                print("WARNING: \"%s\" cannot remove %dith replica because Resource not online" % (path, i))
             else:
                 rg_index = file_rescs.index(remove_rescs[i])
                 rg, repl_id = file_repls[rg_index]
-                print path, ": remove replica #%s (%s)" % (repl_id, rg)
-                retcode, output = itrim( opts + ["-n", repl_id, "-N", str( max_ ), path] )
+                print(path, ": remove replica #%s (%s)" % (repl_id, rg))
+                retcode, output = itrim(opts + ["-n", repl_id, "-N", str(max_), path])
                 if retcode != 0:
-                    print "ERROR:", output
+                    print("ERROR:", output)
 
 
-def irule_resc_list( rule ):
+def irule_resc_list(rule):
     "call rule and split comma separated output"
 
-    listre = re.compile( "^\s*\[(?P<content>.*)\]\s*$" )
-    def list_parse( e ):
-        m = listre.match( e )
-        if not m: raise TypeError
-        return m.group( "content" ).split( "," )
+    listre = re.compile(r"^\s*\[(?P<content>.*)\]\s*$")
 
-    irule = IrodsCommand( "irule", [rule, "null", "ruleExecOut"],
-                         output_filter = list_parse, verbose = False )
+    def list_parse(e):
+        m = listre.match(e)
+        if not m:
+            raise TypeError
+
+        return m.group("content").split(",")
+
+    irule = IrodsCommand("irule", [rule, "null", "ruleExecOut"],
+                         output_filter=list_parse, verbose=False)
 
     retcode, ret = irule()
 
-    if retcode != 0: raise OSError
+    if retcode != 0:
+        raise OSError
 
     return ret
 
-def random_resc_list( *args ):
+
+def random_resc_list(*args):
     "shuffle argument list"
 
-    args = list( args )
-    random.shuffle( args )
+    args = list(args)
+    random.shuffle(args)
 
     return args
+
 
 def get_resc_list():
     """\
@@ -123,346 +139,392 @@ retrieve a list of resources or a method to generate one. Available methods are:
 - irule(rule_name): call iRODS rule rule_name, provided it returns a comma separated list of resource names
 """
 
-    var = getenv( "irodsRescList" )
-    
+    var = getenv("irodsRescList")
+
     if var is None:
-        raise ValueError( "Resource list not found" )
+        raise ValueError("Resource list not found")
 
-    function_re = re.compile( "^\s*(?P<function>\w+)\s*\((?P<args>.*)\)\s*$" )
+    function_re = re.compile(r"^\s*(?P<function>\w+)\s*\((?P<args>.*)\)\s*$")
 
-    m = function_re.match( var )
+    m = function_re.match(var)
     if m:
-        f = m.group( "function" )
-        args = m.group( "args" )
+        f = m.group("function")
+        args = m.group("args")
 
         if f == "irule":
-            return irule_resc_list( args )
+            return irule_resc_list(args)
         elif f == "random":
-            return random_resc_list( *args.split( "," ) )
+            return random_resc_list(*args.split(","))
         else:
-            raise NotImplementedError( "irodsRescList function \"%s\" unknown" % f )
+            raise NotImplementedError(
+                "irodsRescList function \"%s\" unknown" % f
+            )
 
-    return [r.strip() for r in var.split( ',' )]
+    return [r.strip() for r in var.split(',')]
 
-def load_collection_metadata_dict( collection, metaname, recursive ):
-    metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
+
+def load_collection_metadata_dict(collection, metaname, recursive):
+    metadatas = iquest_collection_metadata(
+        collection, metaname, recursive=recursive
+    )
 
     ret = {}
 
     for c, _a, v, _u in metadatas:
         try:
-          ret[c] = int( v )
-        except ValueError, e:
-          sys.stderr.write( "Skipping metadata (%s %s=%s %s) error: %s\n" % ( c, _a, v, _u, e ) )
+            ret[c] = int(v)
+        except ValueError as e:
+            sys.stderr.write(
+                "Skipping metadata (%s %s=%s %s) error: %s\n"
+                % (c, _a, v, _u, e)
+            )
 
     return ret
 
+
 class ReplicaNumConstraint:
-    def __call__( self, e ):
+    def __call__(self, e):
         raise NotImplementedError
 
-    def min( self, path ):
+    def min(self, path):
         raise NotImplementedError
 
-    def max( self, path ):
+    def max(self, path):
         raise NotImplementedError
 
-    def failmsg( self, path ):
+    def failmsg(self, path):
         raise NotImplementedError
+
 
 class MinConstraint(ReplicaNumConstraint):
-    def __init__( self, replnum ):
+    def __init__(self, replnum):
         self.replnum = replnum
-    def __call__( self, e ):
+
+    def __call__(self, e):
         return e[1] >= self.replnum
 
-    def min( self, path ):
+    def min(self, path):
         return self.replnum
 
-    def max( self, path ):
-        return sys.maxint
+    def max(self, path):
+        return sys.maxsize
 
-    def failmsg( self, e ):
+    def failmsg(self, e):
         return "<%d" % self.replnum
 
+
 class MaxConstraint(ReplicaNumConstraint):
-    def __init__( self, replnum ):
+    def __init__(self, replnum):
         self.replnum = replnum
-    def __call__( self, e ):
+
+    def __call__(self, e):
         return e[1] <= self.replnum
 
-    def min( self, path ):
+    def min(self, path):
         return 0
 
-    def max( self, path ):
+    def max(self, path):
         return self.replnum
 
-    def failmsg( self, e ):
+    def failmsg(self, e):
         return ">%d" % self.replnum
 
-class ExactConstraint( ReplicaNumConstraint ):
-    def __init__( self, replnum ):
+
+class ExactConstraint(ReplicaNumConstraint):
+    def __init__(self, replnum):
         self.replnum = replnum
-    def __call__( self, e ):
+
+    def __call__(self, e):
         return e[1] == self.replnum
 
-    def min( self, path ):
+    def min(self, path):
         return self.replnum
 
-    def max( self, path ):
+    def max(self, path):
         return self.replnum
 
-    def failmsg( self, e ):
+    def failmsg(self, e):
         return "!=%d" % self.replnum
 
-class RangeConstraint( ReplicaNumConstraint ):
-    def __init__( self, min_, max_ ):
+
+class RangeConstraint(ReplicaNumConstraint):
+    def __init__(self, min_, max_):
         self.min_ = min_
         self.max_ = max_
 
-    def __call__( self, e ):
+    def __call__(self, e):
         return e[1] <= self.max_ and e[1] >= self.min_
 
-    def min( self, path ):
+    def min(self, path):
         return self.min_
 
-    def max( self, path ):
+    def max(self, path):
         return self.max_
 
-    def failmsg( self, e ):
+    def failmsg(self, e):
         if e[1] > self.max_:
             return ">%d" % self.max_
         elif e[1] < self.min_:
             return "<%d" % self.min_
         return "???"
 
-class MetadataConstraint( ReplicaNumConstraint ):
-    def __init__( self, metadata_dict, fallback ):
+
+class MetadataConstraint(ReplicaNumConstraint):
+    def __init__(self, metadata_dict, fallback):
         self.metadata_dict = metadata_dict
         self.fallback = fallback
 
-    def __call__( self, e ):
-        coll = os.path.dirname( e[0] )
+    def __call__(self, e):
+        coll = os.path.dirname(e[0])
         if coll not in self.metadata_dict:
             if self.fallback is not None:
-                return self.fallback( e )
+                return self.fallback(e)
             return True
         return e[1] == self.metadata_dict[coll]
 
-    def min( self, path ):
-        coll = os.path.dirname( path )
+    def min(self, path):
+        coll = os.path.dirname(path)
         if coll not in self.metadata_dict:
             if self.fallback is not None:
-                return self.fallback.min( path )
+                return self.fallback.min(path)
             return 0
         return self.metadata_dict[coll]
 
-    def max( self, path ):
-        coll = os.path.dirname( path )
+    def max(self, path):
+        coll = os.path.dirname(path)
         if coll not in self.metadata_dict:
             if self.fallback is not None:
-                return self.fallback.max( path )
-            return sys.maxint
+                return self.fallback.max(path)
+            return sys.maxsize
         return self.metadata_dict[coll]
 
-    def failmsg( self, e ):
-        coll = os.path.dirname( e[0] )
+    def failmsg(self, e):
+        coll = os.path.dirname(e[0])
         if coll not in self.metadata_dict:
             if self.fallback is not None:
-                return self.fallback.failmsg( e )
+                return self.fallback.failmsg(e)
             return "???"
         return "!=md(%d)" % self.metadata_dict[coll]
 
-class ORedListConstraint( ReplicaNumConstraint ):
-    def __init__( self, constraints = None ):
+
+class ORedListConstraint(ReplicaNumConstraint):
+    def __init__(self, constraints=None):
         self.constraints = constraints or []
 
-    def __call__( self, e ):
+    def __call__(self, e):
         for constraint in self.constraints:
-            if constraint( e ): return True
+            if constraint(e):
+                return True
 
         return False
 
-    def min( self, path ):
-        min_ = sys.maxint
+    def min(self, path):
+        min_ = sys.maxsize
         for constraint in self.constraints:
-            min_ = min ( min_, constraint.min( path ) )
+            min_ = min(min_, constraint.min(path))
 
         return min_
 
-    def max( self, path ):
+    def max(self, path):
         max_ = 0
         for constraint in self.constraints:
-            max_ = max ( max_, constraint.min( path ) )
+            max_ = max(max_, constraint.min(path))
 
         return max_
 
-    def failmsg( self, e ):
+    def failmsg(self, e):
         ret = []
         for constraint in self.constraints:
-            if not constraint( e ): ret.append( constraint.failmsg( e ) )
+            if not constraint(e):
+                ret.append(constraint.failmsg(e))
 
-        return ",".join( ret ) or "???"
+        return ",".join(ret) or "???"
 
-def parse_condition( arg, collection, recursive ):
-    condition = None
+
+def parse_condition(arg, collection, recursive):
     fallback = None
     if '+' in arg:
         # read fallback from the rest of arguments
         # warning: only metadata accepts fallback, otherwise, it is ignored
-        arg, next = arg.split( '+' )
-        fallback = parse_condition( next, collection, recursive )
+        arg, next = arg.split('+')
+        fallback = parse_condition(next, collection, recursive)
 
-    if arg.endswith( ':' ):
-        replnum = int ( arg[:-1] )
-        return MinConstraint( replnum )
-    elif arg.startswith( ':' ):
-        replnum = int ( arg[1:] )
-        return MaxConstraint( replnum )
+    if arg.endswith(':'):
+        replnum = int(arg[:-1])
+        return MinConstraint(replnum)
+
+    elif arg.startswith(':'):
+        replnum = int(arg[1:])
+        return MaxConstraint(replnum)
     elif ':' in arg:
-        m, M = [int( e ) for e in arg.split( ':' )]
-        return RangeConstraint( m, M )
+        m, M = [int(e) for e in arg.split(':')]
+        return RangeConstraint(m, M)
     else:
         try:
-            replnum = int ( arg )
-            return ExactConstraint( replnum )
+            replnum = int(arg)
+            return ExactConstraint(replnum)
         except ValueError:
-            meta = arg
+            meta = arg.encode()
 
-            metadata_dict = load_collection_metadata_dict( collection, meta, recursive )
-            return MetadataConstraint( metadata_dict, fallback )
+            metadata_dict = load_collection_metadata_dict(
+                collection, meta, recursive
+            )
+
+            return MetadataConstraint(metadata_dict, fallback)
 
     return None
 
-def parse_condition_list( args, collection, recursive ):
+
+def parse_condition_list(args, collection, recursive):
     conditions = []
 
-    if not args: return None
+    if not args:
+        return None
 
     for arg in args:
-        conditions.append( parse_condition( arg, collection, recursive ) )
+        conditions.append(parse_condition(arg, collection, recursive))
 
-    if len( conditions ) == 1: return conditions[0]
+    if len(conditions) == 1:
+        return conditions[0]
 
-    return ORedListConstraint( conditions )
+    return ORedListConstraint(conditions)
 
-def do_irepl_check( collection, condition, user, recursive, verbose, resource,
-                    resource_group_replicas, repair, dry_run, admin, grace_date = None,
-                    ignore_regexps = [] ):
+
+def do_irepl_check(
+    collection, condition, user, recursive, verbose, resource,
+    resource_group_replicas, repair, dry_run, admin, grace_date=None,
+    ignore_regexps=[]
+):
 
     date = grace_date is not None
-    replicas = iquest_replicas( collection, user = user,
-                                recursive = recursive,
-                                date = date )
+    replicas = iquest_replicas(
+        collection, user=user,
+        recursive=recursive,
+        date=date
+    )
 
     if resource:
-        group_replicas = iquest_replicas( collection, user = user,
-                                          recursive = recursive,
-                                          resource = resource,
-                                          resource_group_replicas = resource_group_replicas,
-                                          date = date )
+        group_replicas = iquest_replicas(
+            collection, user=user,
+            recursive=recursive,
+            resource=resource,
+            resource_group_replicas=resource_group_replicas,
+            date=date
+        )
 
         # zero all files replica numbers
         if date:
-            for k in replicas: replicas[k][0] = 0
+            for k in replicas:
+                replicas[k][0] = 0
         else:
-            for k in replicas: replicas[k] = 0
+            for k in replicas:
+                replicas[k] = 0
 
         # replace replica numbers by resource group replica numbers
-        for k, v in group_replicas.iteritems(): replicas[k] = v
+        for k, v in group_replicas.items():
+            replicas[k] = v
 
-    failed = replicas_failed_filter( replicas, condition, date )
+    failed = replicas_failed_filter(replicas, condition, date)
 
     if ignore_regexps:
         not_ignored_failed = []
         for f in failed:
             ignored = False
             for regexp in ignore_regexps:
-                if regexp.match( f[0] ) is not None:
+                if regexp.match(f[0]) is not None:
                     ignored = True
                     break
 
-            if not ignored: not_ignored_failed.append( f )
+            if not ignored:
+                not_ignored_failed.append(f)
 
         failed = not_ignored_failed
 
-    failmsg = "%s : %s (%s)"
+    failmsg = "%s : %d (%s)\n"
     if verbose:
         failmsg = "Failed: \"%s\" has %d replicas (breaks constraints: %s)"
 
     if date:
         grace_failed = []
         for f in failed:
-            d = datetime.datetime.fromtimestamp( f[1][2] )
+            d = datetime.datetime.fromtimestamp(f[1][2])
             if d < grace_date:
-                grace_failed.append( ( f[0], f[1] ) )
+                grace_failed.append((f[0], f[1]))
         failed = grace_failed
 
     for f in failed:
-        print failmsg % ( f[0], f[1][0], condition.failmsg( f ) )
+        sys.stdout.buffer.write(failmsg % (f[0], f[1][0], condition.failmsg(f)))
 
     if repair and failed:
 
         r_list = get_resc_list()
+
         for f in failed:
 
-            repair_replicas_number( f[0], f[1][1], condition, r_list, dry_run = dry_run,
-                                    verbose = verbose,
-                                    resource_group_replicas = resource_group_replicas,
-                                    admin = admin )
+            repair_replicas_number(
+                f[0], f[1][1], condition, r_list, dry_run=dry_run,
+                verbose=verbose,
+                resource_group_replicas=resource_group_replicas,
+                admin=admin
+            )
 
-    return len( replicas )
+    return len(replicas)
 
-def _path_cmp( a, b ):
+
+def _path_key(p):
     # path comparison function: replace '/' in order it takes precedence over all characters
-    return cmp( a.replace( '/', chr( 0 ) ), b.replace( '/', chr( 0 ) ) )
+    return p.replace('/', chr(0))
 
-def base_include_subcollections( base ):
-    colls = base.keys()
-    colls.sort( _path_cmp )
 
-    for i, parent in enumerate( colls ):
+def base_include_subcollections(base):
+    colls = list(base.keys())
+    colls.sort(key=_path_key)
+
+    for i, parent in enumerate(colls):
         for subcollection in colls[i + 1:]:
-            if subcollection.startswith( parent + "/" ):
+            if subcollection.startswith(parent + "/"):
                 # update recursive replicas number from subcollection number
                 base[parent][1] += base[subcollection][1]
 
-def base_split_maxsize( base, maxsize ):
-    colls = base.keys()
-    colls.sort( _path_cmp )
+
+def base_split_maxsize(base, maxsize):
+    colls = list(base.keys())
+    colls.sort(key_path_key)
 
     leaves = []
     spines = []
 
     i = 0
-    while i < len( colls ):
+    while i < len(colls):
         coll = colls[i]
         size = base[coll][1]
         i += 1
         recursive = True
         if size < maxsize:
-            while i < len( colls ) and colls[i].startswith( coll + "/" ):
+            while i < len(colls) and colls[i].startswith(coll + "/"):
                 i += 1
                 recursive = False
         if recursive:
-            spines.append( coll )
+            spines.append(coll)
         else:
-            leaves.append( coll )
+            leaves.append(coll)
 
     return leaves, spines
 
+
 def collection_tree(collection, user):
-    def iquest_filter( row ):
+    def iquest_filter(row):
         if "CAT_NO_ROWS_FOUND" in row: return None
 
-        coll, replicas = row.strip().rsplit( ":", 1 )
+        coll, replicas = row.strip().rsplit(":", 1)
 
-        return coll, int( replicas )
+        return coll, int(replicas)
 
-    iquest = DirectOutputIrodsCommand( "iquest", ["no-distinct", "--no-page", "%s:%s"],
-                                       output_filter = iquest_filter, verbose = False )
+    iquest = DirectOutputIrodsCommand(
+        "iquest", ["no-distinct", "--no-page", "%s:%s"],
+        output_filter=iquest_filter, verbose=False)
 
-    ret = {collection : [0, 0]}
+    ret = {collection: [0, 0]}
 
     select_self = "select COLL_NAME, count(DATA_SIZE) where COLL_NAME = '%s'" % collection
     select_recursive = "select COLL_NAME, count(DATA_REPL_NUM) where COLL_NAME like '%s/%%'" % collection
@@ -472,31 +534,32 @@ def collection_tree(collection, user):
         select_self += user_condition
         select_recursive += user_condition
 
-    output = iquest( [select_self] )
+    output = iquest([select_self])
 
     for row in output:
         if row is None: continue
         coll, replicas = row
-        ret[coll] = [replicas, replicas] # [self-replicas, recursive-replicas]
+        ret[coll] = [replicas, replicas]  # [self-replicas, recursive-replicas]
 
-    output = iquest( [select_recursive] )
+    output = iquest([select_recursive])
 
     for row in output:
-        if row is None: continue
+        if row is None:
+            continue
         coll, replicas = row
-        ret[coll] = [replicas, replicas] # [self-replicas, recursive-replicas]
+        ret[coll] = [replicas, replicas]  # [self-replicas, recursive-replicas]
 
-
-    for coll in ret.keys():
-        parent = os.path.dirname( coll )
+    for coll in list(ret.keys()):
+        parent = os.path.dirname(coll)
         while parent > collection:
             if parent not in ret:
                 ret[parent] = [0, 0]
-            parent = os.path.dirname( parent )
+            parent = os.path.dirname(parent)
 
-    base_include_subcollections( ret )
+    base_include_subcollections(ret)
 
     return ret
+
 
 if __name__ == "__main__":
     import sys
@@ -504,7 +567,7 @@ if __name__ == "__main__":
 
     from optparse import OptionParser
 
-    usage="""\
+    usage = """\
 usage: %prog [options] [--] [<condition>]...
 
 checks wether files respect replica number condition and prints files which fail the test. Multiple conditions are logically OR'ed.
@@ -534,106 +597,106 @@ Notes:
 
     parser = OptionParser(usage = usage)
     parser.add_option("-c", "--collection", dest="collection", default='.',
-                      help = "check files in COLL (default: %default)", metavar = "COLL" )
+                      help = "check files in COLL (default: %default)", metavar = "COLL")
     parser.add_option("-r", "--recursive",
                       action="store_true", dest="recursive", default=False,
                       help="check files in subcollections")
     parser.add_option("--repair",
                       action="store_true", dest="repair", default=False,
                       help = "try to repair replicas numbers according to specifications and variable irodsRescList in "
-                      "~/.irods/.irodsEnv or shell environment variable" )
+                      "~/.irods/.irodsEnv or shell environment variable")
     parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose", default=False,
                       help="be verbose")
-    parser.add_option( "--dry-run",
+    parser.add_option("--dry-run",
                       action = "store_true", dest = "dry_run", default = False,
-                      help = "don't execute repair commands" )
-    parser.add_option( "-g", "--use-resource-groups",
-                      action = "store_true", dest = "resource_group_replicas", default = getenv( "irodsUseRescGroups" ) == "true",
+                      help = "don't execute repair commands")
+    parser.add_option("-g", "--use-resource-groups",
+                      action = "store_true", dest = "resource_group_replicas", default = getenv("irodsUseRescGroups") == "true",
                       help = "work on resource groups replicas (can be configured from variable irodsUseRescGroups in "
-                      "~/.irods/.irodsEnv or shell environment variable. actual defaut: %default)" )
-    parser.add_option( "--resource", dest = "resource", default = None,
+                      "~/.irods/.irodsEnv or shell environment variable. actual defaut: %default)")
+    parser.add_option("--resource", dest = "resource", default = None,
                       metavar="RESOURCE",
                       help="check replica numbers only for replicas in RESOURCE")
-    parser.add_option( "-u", "--user", dest = "user", default = None,
+    parser.add_option("-u", "--user", dest = "user", default = None,
                       metavar = "USER",
-                      help = "check replica numbers only for user USER" )
-    parser.add_option( "-M", "--admin",
+                      help = "check replica numbers only for user USER")
+    parser.add_option("-M", "--admin",
                       action = "store_true", dest = "admin", default = False,
-                      help = "admin mode: admin user uses this option to check other users files" )
-    parser.add_option( "--large", metavar = "NREPL",
+                      help = "admin mode: admin user uses this option to check other users files")
+    parser.add_option("--large", metavar = "NREPL",
                       type = "int", dest = "large", default = None,
-                      help = "split collection trees in several requests when number of replicas exceeds NREPL" )
+                      help = "split collection trees in several requests when number of replicas exceeds NREPL")
 
-    parser.add_option( "--grace-period", metavar = "DAYS",
+    parser.add_option("--grace-period", metavar = "DAYS",
                       type = "int", dest = "grace", default = None,
-                      help = "don't mark newer than DAYS as failed" )
+                      help = "don't mark newer than DAYS as failed")
 
-    parser.add_option( "--ignore", metavar = "REGEXP",
+    parser.add_option("--ignore", metavar = "REGEXP",
                       dest = "ignore", default = [], action = "append",
-                      help = "ignore files satifying REGEXP (option can be called multiple times)" )
+                      help = "ignore files satifying REGEXP (option can be called multiple times)")
 
     (options, args) = parser.parse_args()
 
-    collection = options.collection
+    collection = options.collection.encode()
 
-    if isrel( collection ):
+    if isrel(collection):
         icwd = guess_icwd()
-        collection = os.path.normpath( icwd + '/' + collection )
+        collection = os.path.normpath(icwd + b'/' + collection)
 
-    condition = parse_condition_list( args, collection, options.recursive )
+    condition = parse_condition_list(args, collection, options.recursive)
 
-    if not condition: sys.exit( 0 )
+    if not condition: sys.exit(0)
 
     if options.verbose:
-        print "Check collection:", collection
+        print("Check collection:", collection)
         if options.recursive:
-            print "Recursive check"
+            print("Recursive check")
 
     user = options.user
-    if not ( user or options.admin ): user = guess_user()
+    if not (user or options.admin): user = guess_user()
 
     grace_date = None
     if options.grace:
-        grace_date = datetime.datetime.now() - datetime.timedelta( days = options.grace )
+        grace_date = datetime.datetime.now() - datetime.timedelta(days = options.grace)
         if options.verbose:
-            print "Grace period: %d days (date=%s)" % ( options.grace, grace_date )
+            print("Grace period: %d days (date=%s)" % (options.grace, grace_date))
 
     # check if collection exists in case of empty result
-    if not iquest_iscollection( collection ):
-        print "Error: collection \"%s\" not found" % collection
+    if not iquest_iscollection(collection):
+        print("Error: collection \"%s\" not found" % collection)
         sys.exit(-1)
 
     ignore_regexps = []
     for regexp in options.ignore:
-        ignore_regexps.append( re.compile( regexp ) )
+        ignore_regexps.append(re.compile(regexp))
 
     if options.recursive and options.large is not None:
         if options.verbose:
-            print "Large collection tree method. Splitting directories in several requests over %d replicas." % options.large
+            print("Large collection tree method. Splitting directories in several requests over %d replicas." % options.large)
 
-        base = collection_tree( collection, user )
+        base = collection_tree(collection, user)
 
-        leaves, spines = base_split_maxsize( base, options.large )
+        leaves, spines = base_split_maxsize(base, options.large)
 
         replica_number = 0
         for leaf in leaves:
             if options.verbose:
-                print "recursive request:", leaf, base[leaf]
-            replica_number += do_irepl_check( leaf, condition, user, True, options.verbose, options.resource,
+                print("recursive request:", leaf, base[leaf])
+            replica_number += do_irepl_check(leaf, condition, user, True, options.verbose, options.resource,
                                      options.resource_group_replicas, options.repair, options.dry_run, options.admin,
-                                     grace_date, ignore_regexps )
+                                     grace_date, ignore_regexps)
         for spine in spines:
             if base[spine][0] == 0: continue # don't check for spines with no local files
             if options.verbose:
-                print "non recursive request", spine, base[spine]
-            replica_number += do_irepl_check( spine, condition, user, False, options.verbose, options.resource,
+                print("non recursive request", spine, base[spine])
+            replica_number += do_irepl_check(spine, condition, user, False, options.verbose, options.resource,
                                      options.resource_group_replicas, options.repair, options.dry_run, options.admin,
-                                     grace_date, ignore_regexps )
+                                     grace_date, ignore_regexps)
     else:
-        replica_number = do_irepl_check( collection, condition, user, options.recursive, options.verbose, options.resource,
+        replica_number = do_irepl_check(collection, condition, user, options.recursive, options.verbose, options.resource,
                                      options.resource_group_replicas, options.repair, options.dry_run, options.admin,
-                                     grace_date, ignore_regexps )
+                                     grace_date, ignore_regexps)
 
     if options.verbose:
-        print "Checked %d files" % replica_number
+        print("Checked %d files" % replica_number)

@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 from mcia_irods_utils import IrodsCommand, isrel, guess_icwd, guess_user, getenv, iargw, iquest_collection_metadata
 
@@ -14,7 +14,7 @@ def collection_list( collection, recursive ):
     retcode, output = iquest( ["select COLL_NAME where COLL_NAME like '%s/%%'" % collection] )
 
     if retcode != 0:
-        print "ERROR:", output
+        print("ERROR:", output)
         return
 
     collections += output.split( "\n" )
@@ -31,7 +31,7 @@ def imeta_rf_set( collection, metaname, metavalue, recursive = False ):
         retcode, output = imeta_set( [collection, metaname, metavalue] )
 
         if retcode != 0:
-            print "ERROR:", output
+            print("ERROR:", output)
             return
 
 def imeta_rf_get( collection, metaname, metavalue, recursive = False ):
@@ -39,7 +39,7 @@ def imeta_rf_get( collection, metaname, metavalue, recursive = False ):
 
     if metadatas:
         for c, a, v, u in metadatas:
-            print c, ":", "%s=%s" % ( a, v ), u
+            print(c, ":", "%s=%s" % ( a, v ), u)
 
 def imeta_rf_del( collection, metaname, metavalue, recursive = False ):
     metadatas = iquest_collection_metadata( collection, metaname, recursive = recursive )
@@ -49,7 +49,7 @@ def imeta_rf_del( collection, metaname, metavalue, recursive = False ):
         retcode, output = imeta( [c, a, v] )
 
         if retcode != 0:
-            print "ERROR:", output
+            print("ERROR:", output)
             return
 
 
@@ -83,7 +83,7 @@ Command has the following possible syntax:
     ( options, args ) = parser.parse_args()
 
     if not args:
-        print "ERROR: Command not provided"
+        print("ERROR: Command not provided")
         parser.print_help()
         sys.exit( -1 )
 

@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import sys
 import re
@@ -25,7 +25,7 @@ class _iquest_row_filter:
         for i, f in enumerate( cols ):
             try:
                 ret[self.fields[i]] = f
-            except IndexError, e:
+            except IndexError as e:
                 sys.stderr.write( "iquest_recursive_collection failed with exception: file=%s index=%s\n" % ( f, i ) + str(e) + '\n' )
                 sys.stderr.write( "splitted row is: " + str(cols) + '\n' )
         return ret
@@ -78,7 +78,7 @@ def check_replicas_consistency( repls, ignore_regexps = [], verbose = False ):
         count = data_checks[path].setdefault( checksum, 0 )
         data_checks[path][checksum] = count + 1
 
-    for name, checksums in data_checks.items():
+    for name, checksums in list(data_checks.items()):
         check = True
         for regexp in ignore_regexps:
                 if regexp.match( name ):
@@ -88,7 +88,7 @@ def check_replicas_consistency( repls, ignore_regexps = [], verbose = False ):
                     break
 
         if check and len( checksums ) > 1:
-            print "WARNING : inconsistent checksums for file \'%s\'" % name
+            print("WARNING : inconsistent checksums for file \'%s\'" % name)
 
 _ichksum_cmd = IrodsCommand( "ichksum", ["-f"], verbose = False )
 def ichksum( r, verbose ):
@@ -96,7 +96,7 @@ def ichksum( r, verbose ):
     path = r["path"]
 
     if verbose:
-        print "irods check:", path, repl
+        print("irods check:", path, repl)
 
     retcode, output = _ichksum_cmd( [path, "-n", repl] )
     if retcode != 0:
@@ -113,7 +113,7 @@ def local_ichksum( r, verbose ):
     data_path = r["DATA_PATH"]
 
     if verbose:
-        print "local check:", path, data_path
+        print("local check:", path, data_path)
 
     retcode, output = _local_ichksum_cmd( [data_path] )
     if retcode != 0:
@@ -208,14 +208,14 @@ usage: %prog [options] COLLECTION...
         older_date = time.time() - options.older * 24 * 3600.
         conditions.append( "DATA_MODIFY_TIME < '0%s'" % int( older_date ) )
         if options.verbose:
-            print "Check replicas older than: %d days (date=%s)" % ( options.older, older_date )
+            print("Check replicas older than: %d days (date=%s)" % ( options.older, older_date ))
 
     newer_date = None
     if options.newer:
         newer_date = time.time() - options.newer * 24 * 3600.
         conditions.append( "DATA_MODIFY_TIME > '0%s'" % int( newer_date ) )
         if options.verbose:
-            print "Check replicas newer than: %d days (date=%s)" % ( options.newer, newer_date )
+            print("Check replicas newer than: %d days (date=%s)" % ( options.newer, newer_date ))
 
     icwd = guess_icwd()
 
@@ -251,7 +251,7 @@ usage: %prog [options] COLLECTION...
             for regexp in ignore_regexps:
                 if regexp.match( path ):
                     if options.verbose:
-                        print "ignoring replica:", path, r["DATA_REPL_NUM"]
+                        print("ignoring replica:", path, r["DATA_REPL_NUM"])
                     proceed = False
                     break
             if not proceed: continue
@@ -259,10 +259,10 @@ usage: %prog [options] COLLECTION...
             if options.local_check:
                 try:
                     local_ichksum( r, options.verbose )
-                except Exception, e:
+                except Exception as e:
                     sys.stderr.write( "Local checksum failed with exception:\n%s" % e )
             if options.irods_check:
                 try:
                     ichksum( r, options.verbose )
-                except Exception, e:
+                except Exception as e:
                     sys.stderr.write( "iRODS checksum failed with exception:\n%s" % e )

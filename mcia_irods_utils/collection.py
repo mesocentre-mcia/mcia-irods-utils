@@ -1,4 +1,4 @@
-from icommand import IrodsCommand
+from .icommand import IrodsCommand
 
 def iquest_iscollection( path ):
 

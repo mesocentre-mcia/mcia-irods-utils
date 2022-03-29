@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import os.path
 from mcia_irods_utils import IrodsCommand, iargw, isrel, guess_icwd
@@ -23,6 +23,6 @@ if __name__ == "__main__":
 
     retcode, output = ils(newargs)
 
-    print output.rstrip()
+    print(output.rstrip())
 
     sys.exit( retcode )

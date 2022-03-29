@@ -1,12 +1,13 @@
 
 import os.path
 
-from icommand import IrodsCommand, isrel, guess_icwd, expanduser
+from .icommand import IrodsCommand, isrel, guess_icwd, expanduser
 
 
 def iswild(path):
     "detects if path conatins a wildcard"
     return "*" in path or "?" in path
+
 
 def _sql_escape(path):
     ret = path
@@ -21,6 +22,7 @@ def _sql_escape(path):
 
     return ret
 
+
 def _iquestw(path, orig_path):
     "expands SQL wildcards in path by querying the catalog"
 
@@ -33,7 +35,8 @@ def _iquestw(path, orig_path):
         if "CAT_NO_ROWS_FOUND" in e:
             return []
 
-        # remove query results which contain more "/" characters than the original query
+        # remove query results which contain more "/" characters than the
+        # original query
         # because they aren't on the same collection depth we asked
         for p in e.strip().split("\n"):
             if p.count("/") == path_slashes:
@@ -47,14 +50,14 @@ def _iquestw(path, orig_path):
     files = []
 
     # look for data objects (files)
-    if not path.endswith("/"): 
-        _returncode, files = iquest( ["%s/%s", "select COLL_NAME, DATA_NAME where COLL_NAME like '%s' AND DATA_NAME like '%s'" % ( coll, name )] )
+    if not path.endswith("/"):
+        _returncode, files = iquest(["%s/%s", "select COLL_NAME, DATA_NAME where COLL_NAME like '%s' AND DATA_NAME like '%s'" % (coll, name)])
 
     # look for collections (directories)
     if  path.endswith("/"):
         path = path[:-1]
         path_slashes -= 1
-    _returncode, collections = iquest( ["%s", "select COLL_NAME where COLL_NAME like '%s' " % ( path, )] )
+    _returncode, collections = iquest(["%s", "select COLL_NAME where COLL_NAME like '%s' " % (path,)])
 
     return (files + collections) or [orig_path]
 
@@ -73,13 +76,15 @@ def ipathw(path, icwd = None):
 
     return newpath
 
-def iargw( args, icwd = None ):
+
+def iargw(args, icwd = None):
     icwd = icwd or guess_icwd()
 
     paths = []
     for arg in args:
-        paths += ipathw( arg, icwd )
+        paths += ipathw(arg, icwd)
 
     return paths
+
 
 __all__ = [iswild, ipathw, iargw]

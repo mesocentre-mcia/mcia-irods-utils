@@ -5,7 +5,7 @@
 # Prerequisites
 
 To use mcia-irods-utils, you need:
-* Python 2.6+
+* Python 3.6+
 * Bash shell
 * [iRODS](http://www.irods.org) iCommands installed and accessible in your `PATH`
 

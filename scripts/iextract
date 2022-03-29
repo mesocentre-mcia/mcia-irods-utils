@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import sys
 import shlex
@@ -219,7 +219,7 @@ the current working directory.
     ( options, args ) = parser.parse_args()
 
     if not args:
-        print "No collection argument provided.\n-------"
+        print("No collection argument provided.\n-------")
         parser.print_help()
         sys.exit( -1 )
 
@@ -236,12 +236,12 @@ the current working directory.
             collection = os.path.normpath( icwd + '/' + collection )
 
         collname = os.path.basename( collection )
-        print icwd, collection, collname
+        print(icwd, collection, collname)
 
         if options.rsync:
             retcode, output = irsync_collection( collection, collname )
             if retcode != 0:
-                print "irsync error (%d):" % retcode, output
+                print("irsync error (%d):" % retcode, output)
 
         if options.system_md or options.all_md:
             fields, base = data_system_md( collection )
