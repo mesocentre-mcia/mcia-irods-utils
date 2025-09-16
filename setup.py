@@ -7,7 +7,7 @@ scripts = glob.glob("scripts/i*")
 
 setup(
     name='mcia-irods-utils',
-    version='0.8.0',
+    version='0.8.1',
     description='MCIA\'s iCommands utilities',
     author='Pierre Gay',
     author_email='pierre.gay@u-bordeaux.fr',

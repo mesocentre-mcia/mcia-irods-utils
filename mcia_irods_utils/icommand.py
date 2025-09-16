@@ -37,6 +37,35 @@ class IrodsCommand:
         return p.returncode, output
 
 
+class IquestCommand:
+    "An iRODS iquest iCommand wrapper"
+
+    def __init__(self, opts=[], output_filter=lambda e: e, verbose=False):
+        self.opts = opts
+        self.verbose = verbose
+        self.output_filter = output_filter
+
+    def __call__(self, cmdline=[]):
+        cmdlist = ['iquest'] + self.opts + cmdline
+
+        if self.verbose:
+            print(
+                "IrodsCommand:",
+                " ".join(['iquest'] + self.opts + [repr(e) for e in cmdline])
+           )
+
+        p = subprocess.Popen(
+            cmdlist, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+        output = p.communicate()[0].decode()
+
+        if p.returncode == 0 or output.startswith('CAT_NO_ROWS_FOUND'):
+            p.returncode = 0
+            output = self.output_filter(output)
+
+        return p.returncode, output
+
+
 class DirectOutputIrodsCommand(IrodsCommand):
     "iRODS command wrapper that directly returns output lines from stdout"
 
